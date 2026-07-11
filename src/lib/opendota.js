@@ -14,6 +14,7 @@ export async function fetchHeroes() {
       attr: h.primary_attr, // str | agi | int | all
       roles: h.roles || [],
       img: `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${h.name.replace('npc_dota_hero_', '')}.png`,
+      icon: `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${h.name.replace('npc_dota_hero_', '')}.png`,
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
   return heroCache

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { fetchHeroes } from '../lib/opendota'
-import { SEQUENCE, RESERVE_SECONDS, turnSeconds, phaseLabel } from '../lib/draftSequence'
+import { SEQUENCE, turnSeconds, phaseLabel } from '../lib/draftSequence'
 import { createRoom, findRoom, claimSeat } from '../lib/room'
 
 const ATTRS = [['str', 'Strength'], ['agi', 'Agility'], ['int', 'Intelligence'], ['all', 'Universal']]
@@ -19,21 +19,18 @@ export default function Draft() {
 
   useEffect(() => { fetchHeroes().then(setHeroes).catch(e => setHeroErr(e.message)) }, [])
 
-  // deep link ?room=CODE
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('room')
     if (code) findRoom(code).then(r => { if (r) setRoom(r) }).catch(() => {})
   }, [])
 
-  // load past drafts
   useEffect(() => {
     supabase.from('draft_rooms').select('*').eq('status', 'completed')
       .order('completed_at', { ascending: false }).limit(20)
       .then(({ data }) => setPast(data || []))
   }, [room])
 
-  // live subscription to current room
   useEffect(() => {
     if (!room) return
     const ch = supabase.channel('room-' + room.id)
@@ -45,8 +42,7 @@ export default function Draft() {
 
   async function doCreate() {
     setMsg(null)
-    try { setRoom(await createRoom(user.id)) }
-    catch (e) { setMsg({ err: true, text: e.message }) }
+    try { setRoom(await createRoom(user.id)) } catch (e) { setMsg({ err: true, text: e.message }) }
   }
   async function doJoin() {
     setMsg(null)
@@ -58,7 +54,6 @@ export default function Draft() {
   }
 
   if (heroErr) return <div className="card"><div className="notice err">{heroErr}</div></div>
-
   if (viewPast) return <PastDraftView room={viewPast} heroes={heroes} onBack={() => setViewPast(null)} />
 
   if (!room) {
@@ -66,7 +61,7 @@ export default function Draft() {
       <>
         <div className="card">
           <h2>Draft room</h2>
-          <p className="small mute" style={{ marginTop: 0 }}>Create a room and share the code, or join one. Two captains claim seats; everyone else spectates. Current Captain's Mode sequence with live turn control.</p>
+          <p className="small mute" style={{ marginTop: 0 }}>Create a room and share the code, or join one. Two captains claim seats, flip the coin, then draft — everyone else spectates live.</p>
           <button className="btn" style={{ width: '100%', marginBottom: 12 }} onClick={doCreate}>Create a room</button>
           <div className="row">
             <input className="input grow" placeholder="Enter room code (e.g. DOTA-7F3K)" value={joinCode} onChange={e => setJoinCode(e.target.value)} />
@@ -74,7 +69,6 @@ export default function Draft() {
           </div>
           {msg && <div className={`notice ${msg.err ? 'err' : ''}`} style={{ marginTop: 10 }}>{msg.text}</div>}
         </div>
-
         {past.length > 0 && (
           <div className="card">
             <h2>Past drafts</h2>
@@ -99,23 +93,32 @@ export default function Draft() {
 function Room({ room, setRoom, heroes, user, onExit }) {
   const [now, setNow] = useState(Date.now())
   const [spinning, setSpinning] = useState(false)
+  const [selected, setSelected] = useState(null) // hero staged, awaiting confirm
   const applying = useRef(false)
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 400); return () => clearInterval(t) }, [])
+  useEffect(() => { setSelected(null) }, [room.current_step])
 
-  const mySeat = room.radiant_seat === user.id ? 'radiant' : room.dire_seat === user.id ? 'dire' : 'spectator'
+  // pre-toss: A/B are generic captain seats. Post-toss: cfg.sides maps A/B -> radiant/dire.
+  const mySeatAB = room.radiant_seat === user.id ? 'A' : room.dire_seat === user.id ? 'B' : null
   const cfg = room.config || {}
   const stage = cfg.stage || (room.status === 'drafting' ? 'drafting' : 'lobby')
+  const mySide = cfg.sides ? Object.keys(cfg.sides).find(k => cfg.sides[k] === cfg.sides[mySeatAB]) && cfg.sides[mySeatAB] : null
+  const mySeat = mySide || (mySeatAB ? 'captain' : 'spectator')
+
   const step = room.current_step ?? 0
   const done = room.status === 'completed' || (stage === 'drafting' && step >= SEQUENCE.length)
   const current = stage === 'drafting' && !done ? SEQUENCE[step] : null
-
   const sideOfTeam = t => (t === 'F' ? cfg.firstPickSide : (cfg.firstPickSide === 'radiant' ? 'dire' : 'radiant'))
   const currentSide = current ? sideOfTeam(current.team) : null
-  const myTurn = current && currentSide === mySeat
+  const myTurn = current && mySide === currentSide
   const heroById = id => heroes.find(h => h.id === id)
   const taken = useMemo(() => new Set((room.actions || []).map(a => a.hero_id)), [room])
 
-  const elapsed = room.turn_started_at ? Math.max(0, Math.floor((now - new Date(room.turn_started_at).getTime()) / 1000)) : 0
+  const paused = room.paused
+  const pauseAccum = room.pause_accum_seconds || 0
+  const rawElapsed = room.turn_started_at ? Math.max(0, Math.floor((now - new Date(room.turn_started_at).getTime()) / 1000)) : 0
+  const liveAccum = paused && room.paused_at ? Math.max(0, Math.floor((now - new Date(room.paused_at).getTime()) / 1000)) : 0
+  const elapsed = Math.max(0, rawElapsed - pauseAccum - liveAccum)
   const stdSecs = current ? turnSeconds(step) : 30
   const turnLeft = Math.max(0, stdSecs - elapsed)
   const reserveKey = currentSide === 'radiant' ? 'radiant_reserve_seconds' : 'dire_reserve_seconds'
@@ -123,71 +126,72 @@ function Room({ room, setRoom, heroes, user, onExit }) {
 
   const shareLink = `${window.location.origin}${window.location.pathname}?room=${room.code}`
 
-  async function claim(side) {
-    try { setRoom(await claimSeat(room, side, user.id)) }
-    catch { /* seat taken */ }
+  async function claim(seat) {
+    try { setRoom(await claimSeat(room, seat, user.id)) } catch { /* taken */ }
   }
 
   async function startToss() {
     if (!room.radiant_seat || !room.dire_seat) return
     setSpinning(true)
-    const winnerSide = Math.random() < 0.5 ? 'radiant' : 'dire'
+    const winnerAB = Math.random() < 0.5 ? 'A' : 'B'
     setTimeout(async () => {
       const { data } = await supabase.from('draft_rooms').update({
         status: 'drafting',
-        config: { stage: 'winner_choice', tossWinnerSide: winnerSide },
+        config: { stage: 'winner_choice', tossWinner: winnerAB },
       }).eq('id', room.id).select().single()
       setSpinning(false); if (data) setRoom(data)
     }, 1000)
   }
 
   async function winnerChoose(choice) {
-    const w = cfg.tossWinnerSide, l = w === 'radiant' ? 'dire' : 'radiant'
+    const w = cfg.tossWinner, l = w === 'A' ? 'B' : 'A'
     const next = { ...cfg, winnerChoice: choice }
     if (choice === 'first_pick' || choice === 'last_pick') {
-      next.firstPickSide = choice === 'first_pick' ? w : l
-      next.stage = 'drafting'
-      const { data } = await supabase.from('draft_rooms').update({ config: next, turn_started_at: new Date().toISOString() }).eq('id', room.id).select().single()
-      if (data) setRoom(data)
+      next.pickOrder = { [w]: choice === 'first_pick' ? 'F' : 'S', [l]: choice === 'first_pick' ? 'S' : 'F' }
+      next.stage = 'loser_side'
     } else {
-      // winner chose a side; they still need pick order from loser
-      next.chosenSide = { winner: choice }
-      next.stage = 'loser_pickorder'
-      const { data } = await supabase.from('draft_rooms').update({ config: next }).eq('id', room.id).select().single()
-      if (data) setRoom(data)
+      next.sides = { [w]: choice, [l]: choice === 'radiant' ? 'dire' : 'radiant' }
+      next.stage = 'loser_pick'
     }
-  }
-
-  async function loserChoosePickOrder(choice) {
-    const w = cfg.tossWinnerSide, l = w === 'radiant' ? 'dire' : 'radiant'
-    // loser picks first/last; winner already took a side
-    const next = { ...cfg }
-    next.firstPickSide = choice === 'first_pick' ? l : w
-    next.stage = 'drafting'
-    const { data } = await supabase.from('draft_rooms').update({ config: next, turn_started_at: new Date().toISOString() }).eq('id', room.id).select().single()
+    const { data } = await supabase.from('draft_rooms').update({ config: next }).eq('id', room.id).select().single()
     if (data) setRoom(data)
   }
 
-  async function act(hero) {
-    if (!myTurn || taken.has(hero.id) || applying.current) return
+  async function loserChoose(choice) {
+    const w = cfg.tossWinner, l = w === 'A' ? 'B' : 'A'
+    const next = { ...cfg }
+    if (cfg.stage === 'loser_side') next.sides = { [l]: choice, [w]: choice === 'radiant' ? 'dire' : 'radiant' }
+    else next.pickOrder = { [l]: choice === 'first_pick' ? 'F' : 'S', [w]: choice === 'first_pick' ? 'S' : 'F' }
+    const fSeat = Object.keys(next.pickOrder).find(k => next.pickOrder[k] === 'F')
+    next.firstPickSide = next.sides[fSeat]
+    next.stage = 'drafting'
+    const { data } = await supabase.from('draft_rooms').update({
+      config: next,
+      radiant_name: next.sides.A === 'radiant' ? 'Captain 1' : 'Captain 2',
+      dire_name: next.sides.A === 'dire' ? 'Captain 1' : 'Captain 2',
+      turn_started_at: new Date().toISOString(),
+    }).eq('id', room.id).select().single()
+    if (data) setRoom(data)
+  }
+
+  async function confirmAction() {
+    if (!selected || !myTurn || applying.current) return
     applying.current = true
     try {
       const overtime = Math.max(0, elapsed - stdSecs)
       const nextStep = step + 1
       const finishing = nextStep >= SEQUENCE.length
       const patch = {
-        actions: [...room.actions, { order: step, type: current.type, team: current.team, side: currentSide, hero_id: hero.id, at: new Date().toISOString() }],
+        actions: [...room.actions, { order: step, type: current.type, team: current.team, side: currentSide, hero_id: selected.id, at: new Date().toISOString() }],
         current_step: nextStep,
         [reserveKey]: Math.max(0, room[reserveKey] - overtime),
         turn_started_at: new Date().toISOString(),
+        pause_accum_seconds: 0,
       }
-      if (finishing) {
-        patch.status = 'completed'
-        patch.completed_at = new Date().toISOString()
-        patch.radiant_name = captainName('radiant'); patch.dire_name = captainName('dire')
-      }
+      if (finishing) { patch.status = 'completed'; patch.completed_at = new Date().toISOString() }
       const { data } = await supabase.from('draft_rooms').update(patch).eq('id', room.id).select().single()
       if (data) setRoom(data)
+      setSelected(null)
     } finally { applying.current = false }
   }
 
@@ -195,14 +199,22 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     if (room.actions.length === 0) return
     const { data } = await supabase.from('draft_rooms').update({
       actions: room.actions.slice(0, -1), current_step: step - 1,
-      status: 'drafting', completed_at: null, turn_started_at: new Date().toISOString(),
+      status: 'drafting', completed_at: null, turn_started_at: new Date().toISOString(), pause_accum_seconds: 0,
     }).eq('id', room.id).select().single()
     if (data) setRoom(data)
   }
 
-  function captainName(side) {
-    // display: show the seat holder as Radiant/Dire; fall back to label
-    return side === 'radiant' ? 'Radiant' : 'Dire'
+  async function togglePause() {
+    if (!paused) {
+      const { data } = await supabase.from('draft_rooms').update({ paused: true, paused_at: new Date().toISOString() }).eq('id', room.id).select().single()
+      if (data) setRoom(data)
+    } else {
+      const extra = room.paused_at ? Math.max(0, Math.floor((Date.now() - new Date(room.paused_at).getTime()) / 1000)) : 0
+      const { data } = await supabase.from('draft_rooms').update({
+        paused: false, paused_at: null, pause_accum_seconds: pauseAccum + extra,
+      }).eq('id', room.id).select().single()
+      if (data) setRoom(data)
+    }
   }
 
   const pool = useMemo(() => {
@@ -211,7 +223,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     return g
   }, [heroes])
 
-  /* ── LOBBY ── */
+  /* ── LOBBY: claim seats, then toss ── */
   if (stage === 'lobby') {
     const bothSeated = room.radiant_seat && room.dire_seat
     return (
@@ -223,87 +235,97 @@ function Room({ room, setRoom, heroes, user, onExit }) {
         <div className="room-hero">
           <div className="eyebrow">Room code</div>
           <div className="room-code">{room.code}</div>
-          <button className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => { navigator.clipboard?.writeText(shareLink); }}>Copy invite link</button>
+          <button className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => navigator.clipboard?.writeText(shareLink)}>Copy invite link</button>
         </div>
+        <p className="small mute" style={{ textAlign: 'center' }}>Sides aren't decided yet — claim a captain seat, then flip the coin. Radiant/Dire and pick order come from the toss.</p>
         <div className="seat-grid">
-          {['radiant', 'dire'].map(side => {
-            const seatUser = side === 'radiant' ? room.radiant_seat : room.dire_seat
+          {['A', 'B'].map(seat => {
+            const seatUser = seat === 'A' ? room.radiant_seat : room.dire_seat
             const isMe = seatUser === user.id
             const taken = !!seatUser
             return (
-              <div key={side} className={`seat ${side} ${taken ? 'taken' : ''} ${isMe ? 'seat-me' : ''}`}>
-                <div style={{ fontWeight: 700, color: side === 'radiant' ? 'var(--radiant)' : 'var(--dire-hi)', textTransform: 'capitalize' }}>{side}</div>
+              <div key={seat} className={`seat ${taken ? 'taken' : ''} ${isMe ? 'seat-me' : ''}`}>
+                <div style={{ fontWeight: 700 }}>Captain {seat === 'A' ? 1 : 2}</div>
                 <div className="st">{taken ? (isMe ? 'You' : 'Claimed') : 'Open'}</div>
-                {!taken && mySeat === 'spectator' && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => claim(side)}>Claim</button>}
+                {!taken && !mySeatAB && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => claim(seat)}>Claim</button>}
               </div>
             )
           })}
         </div>
-        <p className="small mute" style={{ textAlign: 'center' }}>You are: <b style={{ color: 'var(--text)' }}>{mySeat === 'spectator' ? 'Spectator' : mySeat + ' captain'}</b>. Spectators watch without controls.</p>
-        {mySeat !== 'spectator' && (
-          <>
-            <div className="toss-wrap" style={{ paddingTop: 6 }}>
-              <div className={`coin ${spinning ? 'spin' : ''}`}>{spinning ? '' : 'Toss'}</div>
-              <button className="btn" onClick={startToss} disabled={!bothSeated || spinning || heroes.length === 0}>
-                {heroes.length === 0 ? 'Loading heroes…' : !bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip coin & begin'}
-              </button>
-            </div>
-          </>
+        {mySeatAB && (
+          <div className="toss-wrap" style={{ paddingTop: 6 }}>
+            <div className={`coin ${spinning ? 'spin' : ''}`}>{spinning ? '' : 'Toss'}</div>
+            <button className="btn" onClick={startToss} disabled={!bothSeated || spinning || heroes.length === 0}>
+              {heroes.length === 0 ? 'Loading heroes…' : !bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip coin & begin'}
+            </button>
+          </div>
         )}
-        {mySeat === 'spectator' && <div className="waiting-lock">Waiting for the captains to begin the draft…</div>}
+        {!mySeatAB && <div className="waiting-lock">Spectating — waiting for the captains to begin…</div>}
       </div>
     )
   }
 
   /* ── TOSS CHOICES ── */
-  if (stage === 'winner_choice' || stage === 'loser_pickorder') {
-    const winnerSide = cfg.tossWinnerSide
-    const iWon = mySeat === winnerSide
-    const iLost = mySeat !== 'spectator' && mySeat !== winnerSide
+  if (stage === 'winner_choice' || stage === 'loser_side' || stage === 'loser_pick') {
+    const winnerLabel = cfg.tossWinner === 'A' ? 'Captain 1' : 'Captain 2'
+    const loserLabel = cfg.tossWinner === 'A' ? 'Captain 2' : 'Captain 1'
+    const iWon = mySeatAB === cfg.tossWinner
+    const iLost = mySeatAB && mySeatAB !== cfg.tossWinner
     return (
       <div className="card toss-wrap">
-        <div className="coin" style={{ textTransform: 'capitalize' }}>{winnerSide}</div>
-        <h2 style={{ marginBottom: 4 }}><span style={{ textTransform: 'capitalize' }}>{winnerSide}</span> wins the toss</h2>
-        {stage === 'winner_choice' && (
-          iWon ? (
-            <>
-              <p className="small mute">Choose your advantage.</p>
-              <div className="choice-grid">
-                <button className="btn" onClick={() => winnerChoose('first_pick')}>First pick</button>
-                <button className="btn" onClick={() => winnerChoose('last_pick')}>Last pick</button>
-                <button className="btn" onClick={() => winnerChoose('radiant')}>Take Radiant</button>
-                <button className="btn" onClick={() => winnerChoose('dire')}>Take Dire</button>
-              </div>
-            </>
-          ) : <div className="waiting-lock">Waiting for {winnerSide} to choose…</div>
-        )}
-        {stage === 'loser_pickorder' && (
-          iLost ? (
-            <>
-              <p className="small mute">{winnerSide} took a side. Choose pick order.</p>
-              <div className="choice-grid">
-                <button className="btn" onClick={() => loserChoosePickOrder('first_pick')}>First pick</button>
-                <button className="btn" onClick={() => loserChoosePickOrder('last_pick')}>Last pick</button>
-              </div>
-            </>
-          ) : <div className="waiting-lock">Waiting for the other captain to choose pick order…</div>
-        )}
+        <div className="coin">{winnerLabel}</div>
+        <h2 style={{ marginBottom: 4 }}>{winnerLabel} wins the toss</h2>
+        {stage === 'winner_choice' && (iWon ? (
+          <>
+            <p className="small mute">Choose one advantage — {loserLabel} gets the other category.</p>
+            <div className="choice-grid">
+              <button className="btn" onClick={() => winnerChoose('first_pick')}>First pick</button>
+              <button className="btn" onClick={() => winnerChoose('last_pick')}>Last pick</button>
+              <button className="btn" onClick={() => winnerChoose('radiant')}>Radiant</button>
+              <button className="btn" onClick={() => winnerChoose('dire')}>Dire</button>
+            </div>
+          </>
+        ) : <div className="waiting-lock">Waiting for {winnerLabel} to choose…</div>)}
+        {stage === 'loser_side' && (iLost ? (
+          <>
+            <p className="small mute">{winnerLabel} took {cfg.winnerChoice === 'first_pick' ? 'first pick' : 'last pick'}. Choose your side.</p>
+            <div className="choice-grid">
+              <button className="btn" onClick={() => loserChoose('radiant')}>Radiant</button>
+              <button className="btn" onClick={() => loserChoose('dire')}>Dire</button>
+            </div>
+          </>
+        ) : <div className="waiting-lock">Waiting for {loserLabel} to choose a side…</div>)}
+        {stage === 'loser_pick' && (iLost ? (
+          <>
+            <p className="small mute">{winnerLabel} took {cfg.winnerChoice}. Choose pick order.</p>
+            <div className="choice-grid">
+              <button className="btn" onClick={() => loserChoose('first_pick')}>First pick</button>
+              <button className="btn" onClick={() => loserChoose('last_pick')}>Last pick</button>
+            </div>
+          </>
+        ) : <div className="waiting-lock">Waiting for {loserLabel} to choose pick order…</div>)}
       </div>
     )
   }
 
   /* ── DRAFTING ── */
+  const radiantLabel = cfg.sides?.A === 'radiant' ? 'Captain 1' : 'Captain 2'
+  const direLabel = cfg.sides?.A === 'dire' ? 'Captain 1' : 'Captain 2'
+
   return (
     <div className="card">
       <div className="row" style={{ marginBottom: 10 }}>
-        <div className="eyebrow grow">Room {room.code} · you are {mySeat === 'spectator' ? 'spectating' : mySeat}</div>
+        <div className="eyebrow grow">Room {room.code} · you are {mySide ? mySide + ' captain' : 'spectating'}</div>
+        {mySide && !done && <button className="btn sm ghost" onClick={togglePause}>{paused ? 'Resume' : 'Pause'}</button>}
         <button className="btn sm ghost" onClick={onExit}>Leave</button>
       </div>
 
+      {paused && !done && <div className="notice" style={{ marginBottom: 10, textAlign: 'center' }}>⏸ Draft paused for both captains</div>}
+
       <div className="draft-top">
         <div className={`dt-team ${currentSide === 'radiant' ? 'turn' : ''}`}>
-          <div className="nm radiant">Radiant</div>
-          <div className="tag">{cfg.firstPickSide === 'radiant' ? 'First pick' : 'Second pick'}{mySeat === 'radiant' ? ' · you' : ''}</div>
+          <div className="nm radiant">{radiantLabel}</div>
+          <div className="tag">Radiant{cfg.firstPickSide === 'radiant' ? ' · first pick' : ''}</div>
         </div>
         <div className="dt-clock">
           {!done ? (
@@ -311,7 +333,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
               <div className={`t num ${turnLeft === 0 && reserveNow < 30 ? 'low' : ''}`}>
                 {turnLeft > 0 ? `0:${String(turnLeft).padStart(2, '0')}` : `${Math.floor(reserveNow / 60)}:${String(reserveNow % 60).padStart(2, '0')}`}
               </div>
-              <div className="mode">{turnLeft > 0 ? 'Captains Mode' : 'Reserve'}</div>
+              <div className="mode">{paused ? 'Paused' : turnLeft > 0 ? 'Captains Mode' : 'Reserve'}</div>
               <div className="reserve-row">
                 <span className="reserve-chip">R <b className="num">{Math.floor(room.radiant_reserve_seconds / 60)}:{String(room.radiant_reserve_seconds % 60).padStart(2, '0')}</b></span>
                 <span className="reserve-chip">D <b className="num">{Math.floor(room.dire_reserve_seconds / 60)}:{String(room.dire_reserve_seconds % 60).padStart(2, '0')}</b></span>
@@ -320,26 +342,25 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           ) : <div className="t" style={{ color: 'var(--gold)' }}>GG</div>}
         </div>
         <div className={`dt-team right ${currentSide === 'dire' ? 'turn' : ''}`}>
-          <div className="nm dire">Dire</div>
-          <div className="tag">{cfg.firstPickSide === 'dire' ? 'First pick' : 'Second pick'}{mySeat === 'dire' ? ' · you' : ''}</div>
+          <div className="nm dire">{direLabel}</div>
+          <div className="tag">Dire{cfg.firstPickSide === 'dire' ? ' · first pick' : ''}</div>
         </div>
       </div>
 
-      {!done && current && (
-        <div className="phase-banner">
-          {phaseLabel(step)} — <b style={{ textTransform: 'capitalize' }}>{currentSide}</b> to {current.type} · slot {step + 1}/24
-        </div>
-      )}
+      {!done && current && <div className="phase-banner">{phaseLabel(step)} — <b style={{ textTransform: 'capitalize' }}>{currentSide}</b> to {current.type} · slot {step + 1}/24</div>}
       {done && <div className="phase-banner">Draft complete · saved to history</div>}
-
-      {!done && !myTurn && mySeat !== 'spectator' && <div className="waiting-lock">Waiting for {currentSide} to {current?.type}…</div>}
-      {!done && mySeat === 'spectator' && <div className="waiting-lock">Spectating — {currentSide} to {current?.type}</div>}
+      {!done && !myTurn && mySide && <div className="waiting-lock">Waiting for {currentSide} to {current?.type}…</div>}
+      {!done && !mySide && <div className="waiting-lock">Spectating — {currentSide} to {current?.type}</div>}
 
       <div className="draft-layout">
         <div>
-          {myTurn && (
+          {myTurn && !done && (
             <div className="row" style={{ marginBottom: 8 }}>
-              <div className="grow small" style={{ color: 'var(--gold)', fontWeight: 600 }}>Your turn to {current.type}</div>
+              <div className="grow small" style={{ color: 'var(--gold)', fontWeight: 600 }}>
+                {selected ? `${current.type === 'ban' ? 'Ban' : 'Pick'} ${selected.name}?` : `Your turn to ${current.type}`}
+              </div>
+              {selected && <button className="btn sm ghost" onClick={() => setSelected(null)}>Cancel</button>}
+              <button className="btn sm" disabled={!selected || paused} onClick={confirmAction}>Confirm</button>
               <button className="btn sm ghost" onClick={undo} disabled={room.actions.length === 0}>Undo</button>
             </div>
           )}
@@ -349,8 +370,9 @@ function Room({ room, setRoom, heroes, user, onExit }) {
                 <h3>{label}</h3>
                 <div className="attr-grid">
                   {pool[key].map(h => (
-                    <button key={h.id} className={`hero ${taken.has(h.id) ? 'gone' : ''}`} onClick={() => act(h)} disabled={!myTurn} title={h.name}>
-                      <img src={h.img} alt={h.name} loading="lazy" />
+                    <button key={h.id} className={`hero ${taken.has(h.id) ? 'gone' : ''} ${selected?.id === h.id ? 'picked' : ''}`}
+                      onClick={() => myTurn && !paused && setSelected(h)} disabled={!myTurn || paused} title={h.name}>
+                      <img src={h.icon} alt={h.name} loading="lazy" decoding="async" />
                     </button>
                   ))}
                 </div>
@@ -368,14 +390,11 @@ function Board({ room, step, heroById, sideOfTeam }) {
   const bySlot = Object.fromEntries((room.actions || []).map(a => [a.order, a]))
   return (
     <div className="board">
-      <div className="board-head">
-        <div className="nm" style={{ color: 'var(--radiant)' }}>Radiant</div><div />
-        <div className="nm" style={{ color: 'var(--dire-hi)' }}>Dire</div>
-      </div>
+      <div className="board-head"><div className="nm" style={{ color: 'var(--radiant)' }}>Radiant</div><div /><div className="nm" style={{ color: 'var(--dire-hi)' }}>Dire</div></div>
       {SEQUENCE.map((s, i) => {
         const side = sideOfTeam(s.team)
         const a = bySlot[i]
-        const img = a ? heroById(a.hero_id)?.img : null
+        const img = a ? heroById(a.hero_id)?.icon : null
         const slot = (
           <div className={`bslot ${s.type === 'ban' ? 'ban ' + (side === 'radiant' ? 'side-l' : 'side-r') : 'pickslot'} ${i === step && room.status !== 'completed' ? 'now' : ''} ${!a && s.type === 'pick' ? 'empty-pick' : ''}`}>
             {img && <img src={img} alt="" />}
@@ -401,10 +420,7 @@ function PastDraftView({ room, heroes, onBack }) {
   const bans = side => (room.actions || []).filter(a => a.type === 'ban' && sideOfTeam(a.team) === side)
   return (
     <div className="card">
-      <div className="row" style={{ marginBottom: 10 }}>
-        <h2 className="grow" style={{ marginBottom: 0 }}>{room.code}</h2>
-        <button className="btn sm ghost" onClick={onBack}>Back</button>
-      </div>
+      <div className="row" style={{ marginBottom: 10 }}><h2 className="grow" style={{ marginBottom: 0 }}>{room.code}</h2><button className="btn sm ghost" onClick={onBack}>Back</button></div>
       <p className="small mute num">{room.completed_at ? new Date(room.completed_at).toLocaleString() : ''}</p>
       {['radiant', 'dire'].map(side => (
         <div key={side} style={{ marginBottom: 14 }}>
@@ -412,7 +428,7 @@ function PastDraftView({ room, heroes, onBack }) {
           <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
             {picks(side).map(a => (
               <div key={a.order} style={{ width: 72, textAlign: 'center' }}>
-                <img src={heroById(a.hero_id)?.img} alt="" style={{ width: '100%', borderRadius: 6 }} />
+                <img src={heroById(a.hero_id)?.icon} alt="" style={{ width: '100%', borderRadius: 6 }} />
                 <div style={{ fontSize: 10 }} className="mute">{heroById(a.hero_id)?.name}</div>
               </div>
             ))}

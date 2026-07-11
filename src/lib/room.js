@@ -23,18 +23,12 @@ export async function findRoom(code) {
   return data
 }
 
-export async function claimSeat(room, side, userId) {
-  const col = side === 'radiant' ? 'radiant_seat' : 'dire_seat'
-  // only claim if empty
-  const patch = { [col]: userId }
+// seat is 'A' or 'B' — generic captain slots, claimed BEFORE the toss.
+// Radiant/Dire is decided only after the toss (see Draft.jsx toss flow).
+export async function claimSeat(room, seat, userId) {
+  const col = seat === 'A' ? 'radiant_seat' : 'dire_seat'
   const { data, error } = await supabase.from('draft_rooms')
-    .update(patch).eq('id', room.id).is(col, null).select().single()
+    .update({ [col]: userId }).eq('id', room.id).is(col, null).select().single()
   if (error) throw error
-  return data
-}
-
-export async function leaveSeat(room, side) {
-  const col = side === 'radiant' ? 'radiant_seat' : 'dire_seat'
-  const { data } = await supabase.from('draft_rooms').update({ [col]: null }).eq('id', room.id).select().single()
   return data
 }

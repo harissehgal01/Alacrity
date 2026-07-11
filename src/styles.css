@@ -202,12 +202,14 @@ a { color: var(--brand-hi); text-decoration: none; }
 .bslot.pickslot { height: 36px; width: 100%; border-radius: 8px; }
 .bslot img { width: 100%; height: 100%; object-fit: cover; }
 .bslot.ban img { filter: grayscale(1) brightness(.5); }
-.bslot.ban::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top right, transparent 45%, var(--dire-hi) 47%, var(--dire-hi) 53%, transparent 55%); opacity: .85; }
 .bslot.now { border-color: var(--gold); box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 45%, transparent); }
 .bslot.empty-pick { border-style: dashed; }
 
-.draft-layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
-@media (max-width: 900px) { .draft-layout { grid-template-columns: 1fr; } .board { order: -1; } }
+.hero.picked { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); z-index: 4; }
+
+.draft-layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+.draft-layout .board { max-height: 640px; overflow-y: auto; position: sticky; top: 12px; }
+@media (max-width: 900px) { .draft-layout { grid-template-columns: 1fr; } .draft-layout .board { max-height: none; position: static; order: -1; } }
 
 /* toss */
 .toss-wrap { text-align: center; padding: 20px 8px; }
