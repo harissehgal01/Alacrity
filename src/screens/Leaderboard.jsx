@@ -1,16 +1,13 @@
 import { useMemo, useState } from 'react'
 import { aggregate, fmt } from '../lib/stats'
-import { puncSummary, tierLabel } from '../lib/punctuality'
-
-export default function Leaderboard({ players, perfs, punc, openProfile }) {
+export default function Leaderboard({ players, perfs, openProfile, online = new Set(), profiles = [] }) {
   const [sortBy, setSortBy] = useState('winrate')
   const stats = useMemo(() => aggregate(perfs), [perfs])
-  const puncByPlayer = useMemo(() => {
-    const m = new Map()
-    for (const p of players) m.set(p.id, puncSummary(punc.filter(r => r.player_id === p.id)))
-    return m
-  }, [players, punc])
-
+  const onlinePlayerIds = useMemo(() => {
+    const s = new Set()
+    for (const pr of profiles) if (pr.player_id && online.has(pr.id)) s.add(pr.player_id)
+    return s
+  }, [profiles, online])
   const rows = useMemo(() => {
     const withStats = players.map(p => ({ player: p, s: stats.get(p.id) })).filter(r => r.s && r.s.games > 0)
     withStats.sort((a, b) => {
@@ -48,8 +45,8 @@ export default function Leaderboard({ players, perfs, punc, openProfile }) {
     <>
       <div className="leaders">
         {leaders.mostKills && <div className="leader"><div className="k">Most kills · game</div><div className="v num">{leaders.mostKills.v}</div><div className="who">{leaders.mostKills.who}</div></div>}
-        {leaders.topAvgDmg && <div className="leader"><div className="k">Avg hero damage</div><div className="v num">{fmt.n(leaders.topAvgDmg.v)}</div><div className="who">{leaders.topAvgDmg.who}</div></div>}
-        {leaders.bestKda && <div className="leader"><div className="k">Best KDA</div><div className="v num">{fmt.d1(leaders.bestKda.v)}</div><div className="who">{leaders.bestKda.who}</div></div>}
+        {leaders.topAvgDmg && <div className="leader"><div className="k">Highest avg damage</div><div className="v num">{fmt.n(leaders.topAvgDmg.v)}</div><div className="who">{leaders.topAvgDmg.who}</div></div>}
+        {leaders.bestKda && <div className="leader"><div className="k">Best KDA <span className="formula">(K+A)/D</span></div><div className="v num">{fmt.d1(leaders.bestKda.v)}</div><div className="who">{leaders.bestKda.who}</div></div>}
         {leaders.topGpm && <div className="leader"><div className="k">Avg GPM</div><div className="v num">{fmt.n(leaders.topGpm.v)}</div><div className="who">{leaders.topGpm.who}</div></div>}
       </div>
 
@@ -64,14 +61,13 @@ export default function Leaderboard({ players, perfs, punc, openProfile }) {
       </div>
 
       {rows.map(({ player, s }, i) => {
-        const pz = puncByPlayer.get(player.id)
         return (
           <button key={player.id} className={`lb-row ${i === 0 ? 'first' : ''}`} onClick={() => openProfile(player)}>
             <div className="lb-rank num">{i + 1}</div>
             <div className="grow">
               <div className="lb-name">
                 {player.name}
-                {pz && <span className={`punc-dot ${pz.tier}`} title={`${tierLabel[pz.tier]}${pz.avg != null ? ` · avg ${Math.round(pz.avg)}m late` : ''}`} />}
+                {onlinePlayerIds.has(player.id) && <span className="online-dot" title="Online now" />}
               </div>
               <div className="lb-sub num">
                 {s.wins}W – {s.losses}L · {s.games} games
@@ -86,9 +82,7 @@ export default function Leaderboard({ players, perfs, punc, openProfile }) {
           </button>
         )
       })}
-      <p className="mute" style={{ fontSize: 11.5, textAlign: 'center', marginTop: 12 }}>
-        <span className="punc-dot good" /> reliable &nbsp; <span className="punc-dot mid" /> sometimes late &nbsp; <span className="punc-dot bad" /> often late — attendance only, never affects ranking
-      </p>
+
     </>
   )
 }

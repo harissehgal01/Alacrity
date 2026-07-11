@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { aggregate, fmt } from '../lib/stats'
 
-export default function PublicLeaderboard({ profiles, players, perfs, user }) {
+export default function PublicLeaderboard({ profiles, players, perfs, user, online = new Set() }) {
   const [sortBy, setSortBy] = useState('winrate')
   const stats = useMemo(() => aggregate(perfs), [perfs])
 
@@ -48,7 +48,7 @@ export default function PublicLeaderboard({ profiles, players, perfs, user }) {
         <div key={profile.id} className={`lb-row ${i === 0 ? 'first' : ''} ${profile.id === user.id ? 'seat-me' : ''}`}>
           <div className="lb-rank num">{i + 1}</div>
           <div className="grow">
-            <div className="lb-name">{name}{profile.player_id && <span className="small mute" style={{ marginLeft: 6, fontWeight: 400 }}>· crew</span>}</div>
+            <div className="lb-name">{name}{online.has(profile.id) && <span className="online-dot" title="Online now" />}{profile.player_id && <span className="small mute" style={{ marginLeft: 6, fontWeight: 400 }}>· crew</span>}</div>
             <div className="lb-sub num">
               {s.wins}W – {s.losses}L · {s.games} games
               <span className="pips">{s.form.map((w, j) => <span key={j} className={`pip ${w ? 'w' : 'l'}`} />)}</span>

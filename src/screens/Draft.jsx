@@ -94,6 +94,8 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const [now, setNow] = useState(Date.now())
   const [spinning, setSpinning] = useState(false)
   const [selected, setSelected] = useState(null) // hero staged, awaiting confirm
+  const [search, setSearch] = useState('')
+  const [nameDraft, setNameDraft] = useState({ team: '', players: '' })
   const applying = useRef(false)
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 400); return () => clearInterval(t) }, [])
   useEffect(() => { setSelected(null) }, [room.current_step])
@@ -125,6 +127,16 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const reserveNow = current ? Math.max(0, room[reserveKey] - Math.max(0, elapsed - stdSecs)) : 0
 
   const shareLink = `${window.location.origin}${window.location.pathname}?room=${room.code}`
+  const teamMeta = cfg.teamMeta || {}
+  const seatLabel = seat => teamMeta[seat]?.team?.trim() || `Captain ${seat === 'A' ? 1 : 2}`
+  const seatPlayers = seat => teamMeta[seat]?.players?.trim() || ''
+
+  async function saveNames() {
+    if (!mySeatAB) return
+    const next = { ...cfg, teamMeta: { ...teamMeta, [mySeatAB]: { team: nameDraft.team, players: nameDraft.players } } }
+    const { data } = await supabase.from('draft_rooms').update({ config: next }).eq('id', room.id).select().single()
+    if (data) setRoom(data)
+  }
 
   async function claim(seat) {
     try { setRoom(await claimSeat(room, seat, user.id)) } catch { /* taken */ }
@@ -167,8 +179,8 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     next.stage = 'drafting'
     const { data } = await supabase.from('draft_rooms').update({
       config: next,
-      radiant_name: next.sides.A === 'radiant' ? 'Captain 1' : 'Captain 2',
-      dire_name: next.sides.A === 'dire' ? 'Captain 1' : 'Captain 2',
+      radiant_name: (cfg.teamMeta?.[next.sides.A === 'radiant' ? 'A' : 'B']?.team) || (next.sides.A === 'radiant' ? 'Captain 1' : 'Captain 2'),
+      dire_name: (cfg.teamMeta?.[next.sides.A === 'dire' ? 'A' : 'B']?.team) || (next.sides.A === 'dire' ? 'Captain 1' : 'Captain 2'),
       turn_started_at: new Date().toISOString(),
     }).eq('id', room.id).select().single()
     if (data) setRoom(data)
@@ -218,10 +230,17 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   }
 
   const pool = useMemo(() => {
+    const q = search.trim().toLowerCase()
     const g = { str: [], agi: [], int: [], all: [] }
-    for (const h of heroes) (g[h.attr] || g.all).push(h)
+    for (const h of heroes) {
+      if (q && !h.name.toLowerCase().includes(q)) continue
+      ;(g[h.attr] || g.all).push(h)
+    }
     return g
-  }, [heroes])
+  }, [heroes, search])
+
+  const lastAction = room.actions && room.actions.length ? room.actions[room.actions.length - 1] : null
+  const lastActionHero = lastAction ? heroById(lastAction.hero_id) : null
 
   /* ── LOBBY: claim seats, then toss ── */
   if (stage === 'lobby') {
@@ -245,13 +264,23 @@ function Room({ room, setRoom, heroes, user, onExit }) {
             const taken = !!seatUser
             return (
               <div key={seat} className={`seat ${taken ? 'taken' : ''} ${isMe ? 'seat-me' : ''}`}>
-                <div style={{ fontWeight: 700 }}>Captain {seat === 'A' ? 1 : 2}</div>
-                <div className="st">{taken ? (isMe ? 'You' : 'Claimed') : 'Open'}</div>
+                <div style={{ fontWeight: 700 }}>{seatLabel(seat)}</div>
+                <div className="st">{taken ? (isMe ? 'You' : 'Claimed') : 'Open'}{seatPlayers(seat) && <div className="small mute" style={{ marginTop: 2 }}>{seatPlayers(seat)}</div>}</div>
                 {!taken && !mySeatAB && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => claim(seat)}>Claim</button>}
               </div>
             )
           })}
         </div>
+        {mySeatAB && (
+          <div className="card" style={{ background: 'var(--bg0)', margin: '10px 0' }}>
+            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>Optional — name your team and list your players. Shown instead of "Captain {mySeatAB === 'A' ? 1 : 2}".</p>
+            <input className="input" style={{ marginBottom: 8 }} placeholder="Team name (optional)"
+              defaultValue={teamMeta[mySeatAB]?.team || ''} onChange={e => setNameDraft(n => ({ ...n, team: e.target.value }))} />
+            <input className="input" style={{ marginBottom: 8 }} placeholder="Players (optional, e.g. Haris, Ahmed)"
+              defaultValue={teamMeta[mySeatAB]?.players || ''} onChange={e => setNameDraft(n => ({ ...n, players: e.target.value }))} />
+            <button className="btn sm" onClick={saveNames}>Save names</button>
+          </div>
+        )}
         {mySeatAB && (
           <div className="toss-wrap" style={{ paddingTop: 6 }}>
             <div className={`coin ${spinning ? 'spin' : ''}`}>{spinning ? '' : 'Toss'}</div>
@@ -267,8 +296,10 @@ function Room({ room, setRoom, heroes, user, onExit }) {
 
   /* ── TOSS CHOICES ── */
   if (stage === 'winner_choice' || stage === 'loser_side' || stage === 'loser_pick') {
-    const winnerLabel = cfg.tossWinner === 'A' ? 'Captain 1' : 'Captain 2'
-    const loserLabel = cfg.tossWinner === 'A' ? 'Captain 2' : 'Captain 1'
+    const teamMeta = cfg.teamMeta || {}
+    const lbl = seat => teamMeta[seat]?.team?.trim() || `Captain ${seat === 'A' ? 1 : 2}`
+    const winnerLabel = lbl(cfg.tossWinner)
+    const loserLabel = lbl(cfg.tossWinner === 'A' ? 'B' : 'A')
     const iWon = mySeatAB === cfg.tossWinner
     const iLost = mySeatAB && mySeatAB !== cfg.tossWinner
     return (
@@ -309,8 +340,8 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   }
 
   /* ── DRAFTING ── */
-  const radiantLabel = cfg.sides?.A === 'radiant' ? 'Captain 1' : 'Captain 2'
-  const direLabel = cfg.sides?.A === 'dire' ? 'Captain 1' : 'Captain 2'
+  const radiantLabel = seatLabel(cfg.sides?.A === 'radiant' ? 'A' : 'B')
+  const direLabel = seatLabel(cfg.sides?.A === 'dire' ? 'A' : 'B')
 
   return (
     <div className="card">
@@ -364,6 +395,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
               <button className="btn sm ghost" onClick={undo} disabled={room.actions.length === 0}>Undo</button>
             </div>
           )}
+          <input className="input" style={{ marginBottom: 10 }} placeholder="Search heroes…" value={search} onChange={e => setSearch(e.target.value)} />
           <div className="pool">
             {ATTRS.map(([key, label]) => (
               <div key={key} className={`attr ${key}`}>
@@ -372,7 +404,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
                   {pool[key].map(h => (
                     <button key={h.id} className={`hero ${taken.has(h.id) ? 'gone' : ''} ${selected?.id === h.id ? 'picked' : ''}`}
                       onClick={() => myTurn && !paused && setSelected(h)} disabled={!myTurn || paused} title={h.name}>
-                      <img src={h.icon} alt={h.name} loading="lazy" decoding="async" />
+                      <img src={h.img} alt={h.name} loading="lazy" decoding="async" />
                     </button>
                   ))}
                 </div>
@@ -382,6 +414,13 @@ function Room({ room, setRoom, heroes, user, onExit }) {
         </div>
         <Board room={room} step={step} heroById={heroById} sideOfTeam={sideOfTeam} />
       </div>
+
+      {lastActionHero && (
+        <div className="last-action-strip">
+          <img src={lastActionHero.img} alt="" />
+          <span><b style={{ textTransform: 'capitalize' }}>{lastAction.side}</b> {lastAction.type === 'ban' ? 'banned' : 'picked'} <b>{lastActionHero.name}</b></span>
+        </div>
+      )}
     </div>
   )
 }
@@ -394,7 +433,7 @@ function Board({ room, step, heroById, sideOfTeam }) {
       {SEQUENCE.map((s, i) => {
         const side = sideOfTeam(s.team)
         const a = bySlot[i]
-        const img = a ? heroById(a.hero_id)?.icon : null
+        const img = a ? heroById(a.hero_id)?.img : null
         const slot = (
           <div className={`bslot ${s.type === 'ban' ? 'ban ' + (side === 'radiant' ? 'side-l' : 'side-r') : 'pickslot'} ${i === step && room.status !== 'completed' ? 'now' : ''} ${!a && s.type === 'pick' ? 'empty-pick' : ''}`}>
             {img && <img src={img} alt="" />}
@@ -428,7 +467,7 @@ function PastDraftView({ room, heroes, onBack }) {
           <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
             {picks(side).map(a => (
               <div key={a.order} style={{ width: 72, textAlign: 'center' }}>
-                <img src={heroById(a.hero_id)?.icon} alt="" style={{ width: '100%', borderRadius: 6 }} />
+                <img src={heroById(a.hero_id)?.img} alt="" style={{ width: '100%', borderRadius: 6 }} />
                 <div style={{ fontSize: 10 }} className="mute">{heroById(a.hero_id)?.name}</div>
               </div>
             ))}

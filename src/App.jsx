@@ -12,6 +12,7 @@ import Roster from './screens/Roster'
 import PublicLeaderboard from './screens/PublicLeaderboard'
 import SelfLog from './screens/SelfLog'
 import ClaimIdentity from './screens/ClaimIdentity'
+import { usePresence } from './lib/presence'
 
 const TABS = [
   ['board', 'Leaderboard'],
@@ -23,6 +24,7 @@ const TABS = [
 
 export default function App() {
   const { session, user, profile, loading: authLoading, isAdmin, signOut, refreshProfile } = useAuth()
+  const online = usePresence(user)
   const [tab, setTab] = useState('board')
   const [players, setPlayers] = useState([])
   const [perfs, setPerfs] = useState([])
@@ -32,6 +34,7 @@ export default function App() {
   const [board, setBoard] = useState('crew')
   const [openPlayer, setOpenPlayer] = useState(null)
   const [about, setAbout] = useState(false)
+  const [menu, setMenu] = useState(false)
   const [theme, setTheme] = useState('dark')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -94,7 +97,7 @@ export default function App() {
   // must claim a roster identity (or skip) — only prompt if not linked and roster exists
   const needsClaim = profile && !profile.player_id && !profile.claim_skipped
 
-  const shared = { players, perfs, matches, punc, reload, openProfile: setOpenPlayer, isAdmin }
+  const shared = { players, perfs, matches, punc, reload, openProfile: setOpenPlayer, isAdmin, online, profiles }
 
   return (
     <div className="app">
@@ -111,6 +114,7 @@ export default function App() {
         <div className="head-actions">
           <button className="iconbtn" onClick={toggleTheme} aria-label="Toggle theme">{theme === 'dark' ? '☀' : '☾'}</button>
           <button className="iconbtn" onClick={() => setAbout(true)} aria-label="About">i</button>
+          <button className="iconbtn avatar" onClick={() => setMenu(true)} aria-label="Profile">{(profile?.display_name || user.email || '?')[0].toUpperCase()}</button>
         </div>
       </header>
 
@@ -126,7 +130,7 @@ export default function App() {
           {board === 'crew' && <Leaderboard {...shared} />}
           {board === 'public' && (
             <>
-              <PublicLeaderboard profiles={profiles} players={players} perfs={perfs} user={user} />
+              <PublicLeaderboard profiles={profiles} players={players} perfs={perfs} user={user} online={online} />
               {!profile?.player_id && <SelfLog user={user} reload={reload} />}
             </>
           )}
@@ -140,7 +144,7 @@ export default function App() {
         </>
       )}
       {!loading && tab === 'punctuality' && <Punctuality players={players} isAdmin={isAdmin} />}
-      {!loading && tab === 'roster' && <Roster players={players} reload={reload} isAdmin={isAdmin} />}
+      {!loading && tab === 'roster' && <Roster players={players} reload={reload} isAdmin={isAdmin} punc={punc} />}
 
       {needsClaim && <ClaimIdentity players={players} onDone={refreshProfile} />}
 
@@ -148,6 +152,20 @@ export default function App() {
         <div className="modal-back" onClick={() => setOpenPlayer(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} onClose={() => setOpenPlayer(null)} />
+          </div>
+        </div>
+      )}
+
+      {menu && (
+        <div className="modal-back" onClick={() => setMenu(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h2 style={{ marginBottom: 4 }}>Profile</h2>
+            <p className="small mute" style={{ marginTop: 0 }}>{profile?.display_name || user.email}{isAdmin ? ' · admin' : ''}</p>
+            {profile?.player_id && <p className="small mute" style={{ marginTop: -6 }}>Linked to roster: <b style={{ color: 'var(--text)' }}>{players.find(p => p.id === profile.player_id)?.name || '—'}</b></p>}
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn grow danger" onClick={() => { setMenu(false); signOut() }}>Sign out</button>
+              <button className="btn ghost" onClick={() => setMenu(false)}>Close</button>
+            </div>
           </div>
         </div>
       )}

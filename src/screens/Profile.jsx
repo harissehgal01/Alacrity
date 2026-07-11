@@ -41,7 +41,7 @@ export default function Profile({ player, perfs, matches, punc = [], onClose }) 
           <div className="stat-grid" style={{ marginBottom: 16 }}>
             <div className="stat"><div className="k">Win rate</div><div className="v num" style={{ color: 'var(--gold)' }}>{fmt.pct(s.winRate)}</div></div>
             <div className="stat"><div className="k">Record</div><div className="v num">{s.wins}–{s.losses}</div></div>
-            <div className="stat"><div className="k">KDA</div><div className="v num">{fmt.d1(s.kda)}</div></div>
+            <div className="stat"><div className="k">KDA <span className="formula">(K+A)/D</span></div><div className="v num">{fmt.d1(s.kda)}</div></div>
             <div className="stat"><div className="k">Avg kills</div><div className="v num">{fmt.d1(s.avgKills)}</div></div>
             <div className="stat"><div className="k">Avg deaths</div><div className="v num">{fmt.d1(s.avgDeaths)}</div></div>
             <div className="stat"><div className="k">Avg assists</div><div className="v num">{fmt.d1(s.avgAssists)}</div></div>

@@ -286,3 +286,31 @@ a { color: var(--brand-hi); text-decoration: none; }
 .seg { display: inline-flex; background: var(--bg3); border-radius: 12px; padding: 3px; margin-bottom: 14px; }
 .seg button { padding: 8px 18px; border-radius: 9px; font-size: 13px; font-weight: 600; color: var(--dim); }
 .seg button.on { background: var(--card-grad); color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+
+/* online presence */
+.online-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 8px; vertical-align: middle;
+  background: #35C46A; box-shadow: 0 0 8px rgba(53,196,106,.7); animation: pulse 2.4s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+
+/* avatar button */
+.iconbtn.avatar { background: var(--brand); color: #fff; font-weight: 700; border-color: transparent; }
+
+/* last picked/banned caption strip */
+.last-action-strip {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px;
+  background: var(--bg0); border: 1px solid var(--line); border-radius: 12px; font-size: 13.5px;
+}
+.last-action-strip img { width: 44px; height: 25px; object-fit: cover; border-radius: 5px; }
+
+/* KDA formula caption */
+.formula { font-weight: 400; font-size: 9.5px; color: var(--dim); text-transform: none; letter-spacing: 0; margin-left: 4px; }
+
+/* punctuality badge — neutral, distinct from win/loss and online colors */
+.punc-badge {
+  display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-2);
+  color: var(--mute); background: var(--glass);
+}
+.punc-badge.good { color: var(--brand-hi); border-color: color-mix(in srgb, var(--brand) 35%, var(--line-2)); }
+.punc-badge.mid { color: #B79A4A; border-color: color-mix(in srgb, #B79A4A 35%, var(--line-2)); }
+.punc-badge.bad { color: #A0656A; border-color: color-mix(in srgb, #A0656A 35%, var(--line-2)); }
