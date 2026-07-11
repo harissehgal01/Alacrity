@@ -2,26 +2,27 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 function cellClass(r) {
-  if (!r) return 'empty'
-  if (r.no_show) return 'noshow'
+  if (!r) return 'cell-empty'
+  if (r.no_show) return 'cell-noshow'
   const m = r.minutes_late ?? 0
-  if (m <= 0) return 'ontime'
-  if (m <= 10) return 'late10'
-  if (m <= 20) return 'late20'
-  return 'late30'
+  if (m <= 0) return 'cell-ontime'
+  if (m <= 10) return 'cell-late10'
+  if (m <= 20) return 'cell-late20'
+  return 'cell-late30'
 }
 function cellText(r) {
   if (!r) return '·'
   if (r.no_show) return 'NS'
   const m = r.minutes_late ?? 0
-  return m <= 0 ? (m === 0 ? '0' : `${m}`) : `+${m}`
+  return m > 0 ? `+${m}` : `${m}`
 }
 
-export default function Punctuality({ players }) {
+export default function Punctuality({ players, isAdmin }) {
   const [rows, setRows] = useState([])
   const [adding, setAdding] = useState(false)
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [entries, setEntries] = useState({}) // player_id -> {late, noShow}
+  const [entries, setEntries] = useState({})
+  const [edit, setEdit] = useState(null) // { player, date, row|null }
   const [busy, setBusy] = useState(false)
 
   async function load() {
@@ -43,40 +44,52 @@ export default function Punctuality({ players }) {
       const mine = rows.filter(r => r.player_id === p.id)
       const attended = mine.filter(r => !r.no_show && r.minutes_late != null)
       const late = attended.reduce((a, r) => a + Math.max(0, r.minutes_late), 0)
-      t.set(p.id, {
-        total: late,
-        avg: attended.length ? late / attended.length : null,
-        noShows: mine.filter(r => r.no_show).length,
-      })
+      t.set(p.id, { total: late, avg: attended.length ? late / attended.length : null, noShows: mine.filter(r => r.no_show).length })
     }
     return t
   }, [rows, players])
 
   async function saveSession() {
     setBusy(true)
-    const payload = players
-      .filter(p => entries[p.id] !== undefined)
-      .map(p => ({
-        player_id: p.id,
-        session_date: date,
-        minutes_late: entries[p.id].noShow ? null : Number(entries[p.id].late || 0),
-        no_show: !!entries[p.id].noShow,
-      }))
-    if (payload.length) {
-      await supabase.from('punctuality').upsert(payload, { onConflict: 'player_id,session_date' })
-    }
+    const payload = players.filter(p => entries[p.id] !== undefined).map(p => ({
+      player_id: p.id, session_date: date,
+      minutes_late: entries[p.id].noShow ? null : Number(entries[p.id].late || 0),
+      no_show: !!entries[p.id].noShow,
+    }))
+    if (payload.length) await supabase.from('punctuality').upsert(payload, { onConflict: 'player_id,session_date' })
     setBusy(false); setAdding(false); setEntries({})
+    load()
+  }
+
+  async function saveEdit(minutes, noShow) {
+    setBusy(true)
+    await supabase.from('punctuality').upsert([{
+      player_id: edit.player.id, session_date: edit.date,
+      minutes_late: noShow ? null : Number(minutes || 0), no_show: noShow,
+    }], { onConflict: 'player_id,session_date' })
+    setBusy(false); setEdit(null); load()
+  }
+
+  async function clearEdit() {
+    setBusy(true)
+    await supabase.from('punctuality').delete().eq('player_id', edit.player.id).eq('session_date', edit.date)
+    setBusy(false); setEdit(null); load()
+  }
+
+  async function deleteSession(d) {
+    if (!confirm(`Delete the whole ${d} session for everyone?`)) return
+    await supabase.from('punctuality').delete().eq('session_date', d)
     load()
   }
 
   return (
     <>
       <div className="card">
-        <div className="row" style={{ marginBottom: 10 }}>
+        <div className="row" style={{ marginBottom: 8 }}>
           <h2 className="grow" style={{ marginBottom: 0 }}>Punctuality</h2>
-          <button className="btn sm" onClick={() => setAdding(a => !a)}>{adding ? 'Cancel' : 'Record session'}</button>
+          {isAdmin && <button className="btn sm" onClick={() => setAdding(a => !a)}>{adding ? 'Cancel' : 'Record session'}</button>}
         </div>
-        <p className="small mute" style={{ marginTop: 0 }}>Minutes late per session. Negative = early. Attendance only — it never touches the leaderboard.</p>
+        <p className="small mute" style={{ marginTop: 0 }}>Minutes late per session — negative means early. Tap any cell to edit or clear it. Attendance only; never touches the leaderboard.</p>
 
         {adding && (
           <div style={{ marginBottom: 14 }}>
@@ -86,9 +99,7 @@ export default function Punctuality({ players }) {
               return (
                 <div key={p.id} className="row" style={{ marginBottom: 6 }}>
                   <div className="grow small">{p.name}</div>
-                  <input className="input num" type="number" style={{ width: 90 }} placeholder="min late"
-                    disabled={e.noShow}
-                    value={e.late}
+                  <input className="input num" type="number" style={{ width: 90 }} placeholder="min late" disabled={e.noShow} value={e.late}
                     onChange={ev => setEntries(s => ({ ...s, [p.id]: { ...e, late: ev.target.value } }))} />
                   <label className="small mute" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <input type="checkbox" checked={e.noShow}
@@ -111,7 +122,12 @@ export default function Punctuality({ players }) {
               <thead>
                 <tr>
                   <th>Player</th>
-                  {dates.map(d => <th key={d}>{new Date(d + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</th>)}
+                  {dates.map(d => (
+                    <th key={d}>
+                      {new Date(d + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                      {isAdmin && <button className="btn sm danger" style={{ padding: '0 5px', marginLeft: 4, fontSize: 10 }} title="Delete session" onClick={() => deleteSession(d)}>✕</button>}
+                    </th>
+                  ))}
                   <th>Total</th><th>Avg</th><th>NS</th>
                 </tr>
               </thead>
@@ -123,7 +139,13 @@ export default function Punctuality({ players }) {
                       <td>{p.name}</td>
                       {dates.map(d => {
                         const r = byKey.get(`${p.id}|${d}`)
-                        return <td key={d}><span className={`cell num ${cellClass(r)}`}>{cellText(r)}</span></td>
+                        return (
+                          <td key={d}>
+                            <button className={`cellbtn ${cellClass(r)}`} onClick={() => isAdmin && setEdit({ player: p, date: d, row: r || null })}>
+                              {cellText(r)}
+                            </button>
+                          </td>
+                        )
                       })}
                       <td className="num">{t.total}</td>
                       <td className="num">{t.avg == null ? '—' : Math.round(t.avg * 10) / 10}</td>
@@ -136,6 +158,32 @@ export default function Punctuality({ players }) {
           </div>
         )}
       </div>
+
+      {edit && <EditCell edit={edit} busy={busy} onSave={saveEdit} onClear={clearEdit} onClose={() => setEdit(null)} />}
     </>
+  )
+}
+
+function EditCell({ edit, busy, onSave, onClear, onClose }) {
+  const [minutes, setMinutes] = useState(edit.row && !edit.row.no_show ? String(edit.row.minutes_late ?? 0) : '')
+  const [noShow, setNoShow] = useState(edit.row?.no_show || false)
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+        <h2 style={{ marginBottom: 4 }}>{edit.player.name}</h2>
+        <p className="small mute" style={{ marginTop: 0 }}>{new Date(edit.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <input className="input num grow" type="number" placeholder="Minutes late (negative = early)" disabled={noShow}
+            value={minutes} onChange={e => setMinutes(e.target.value)} />
+          <label className="small mute" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="checkbox" checked={noShow} onChange={e => setNoShow(e.target.checked)} /> no-show
+          </label>
+        </div>
+        <div className="row">
+          <button className="btn grow" disabled={busy} onClick={() => onSave(minutes, noShow)}>Save</button>
+          {edit.row && <button className="btn danger" disabled={busy} onClick={onClear}>Clear entry</button>}
+        </div>
+      </div>
+    </div>
   )
 }

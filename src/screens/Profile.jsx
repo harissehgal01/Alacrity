@@ -1,28 +1,22 @@
-import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { useMemo } from 'react'
 import { aggregate, fmt } from '../lib/stats'
 
-export default function Profile({ player, perfs, matches, onClose }) {
+export default function Profile({ player, perfs, matches, punc = [], onClose }) {
   const s = useMemo(() => aggregate(perfs.filter(p => p.player_id === player.id)).get(player.id), [perfs, player.id])
-  const [punc, setPunc] = useState([])
-
-  useEffect(() => {
-    supabase.from('punctuality').select('*').eq('player_id', player.id).order('session_date', { ascending: false })
-      .then(({ data }) => setPunc(data || []))
-  }, [player.id])
+  const myPunc = useMemo(() => punc.filter(r => r.player_id === player.id), [punc, player.id])
 
   const puncStats = useMemo(() => {
-    const attended = punc.filter(r => !r.no_show && r.minutes_late != null)
-    const noShows = punc.filter(r => r.no_show).length
+    const attended = myPunc.filter(r => !r.no_show && r.minutes_late != null)
+    const noShows = myPunc.filter(r => r.no_show).length
     const total = attended.reduce((a, r) => a + r.minutes_late, 0)
     return {
-      sessions: punc.length,
+      sessions: myPunc.length,
       noShows,
       totalLate: total,
       avgLate: attended.length ? total / attended.length : null,
-      onTimeRate: punc.length ? attended.filter(r => r.minutes_late <= 0).length / punc.length : null,
+      onTimeRate: myPunc.length ? attended.filter(r => r.minutes_late <= 0).length / punc.length : null,
     }
-  }, [punc])
+  }, [myPunc])
 
   const recentMatches = useMemo(() => {
     const mine = perfs.filter(p => p.player_id === player.id)
@@ -74,8 +68,8 @@ export default function Profile({ player, perfs, matches, onClose }) {
 
       <h2 style={{ fontSize: 14, marginTop: 18 }}>Punctuality</h2>
       <p className="small mute" style={{ marginTop: 2 }}>Attendance only — never affects the leaderboard.</p>
-      {punc.length === 0 && <p className="mute small">No sessions recorded.</p>}
-      {punc.length > 0 && (
+      {myPunc.length === 0 && <p className="mute small">No sessions recorded.</p>}
+      {myPunc.length > 0 && (
         <div className="stat-grid">
           <div className="stat"><div className="k">On-time rate</div><div className="v num">{puncStats.onTimeRate == null ? '—' : fmt.pct(puncStats.onTimeRate)}</div></div>
           <div className="stat"><div className="k">Avg minutes late</div><div className="v num">{puncStats.avgLate == null ? '—' : fmt.d1(puncStats.avgLate)}</div></div>

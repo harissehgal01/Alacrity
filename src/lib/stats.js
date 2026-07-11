@@ -1,11 +1,13 @@
 // Aggregate per-player stats from match_performances rows.
+// key = player_id (crew) or profile_id (public self-logged), whichever is set.
 export function aggregate(perfs) {
-  const byPlayer = new Map()
+  const byKey = new Map()
   for (const p of perfs) {
-    if (!byPlayer.has(p.player_id)) {
-      byPlayer.set(p.player_id, {
-        player_id: p.player_id,
-        games: 0, wins: 0,
+    const key = p.player_id || p.profile_id
+    if (!key) continue
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        key, games: 0, wins: 0,
         kills: 0, deaths: 0, assists: 0,
         heroDamage: 0, heroDamageGames: 0,
         towerDamage: 0, towerDamageGames: 0,
@@ -13,10 +15,10 @@ export function aggregate(perfs) {
         xpm: 0, xpmGames: 0,
         lastHits: 0, lastHitsGames: 0,
         maxKills: 0, maxHeroDamage: 0,
-        recent: [], // most recent first: true = win
+        recent: [],
       })
     }
-    const s = byPlayer.get(p.player_id)
+    const s = byKey.get(key)
     s.games += 1
     if (p.won) s.wins += 1
     s.kills += p.kills || 0
@@ -31,7 +33,7 @@ export function aggregate(perfs) {
     s.maxHeroDamage = Math.max(s.maxHeroDamage, p.hero_damage || 0)
     s.recent.push({ won: p.won, at: p._played_at })
   }
-  for (const s of byPlayer.values()) {
+  for (const s of byKey.values()) {
     s.losses = s.games - s.wins
     s.winRate = s.games ? s.wins / s.games : 0
     s.avgKills = s.games ? s.kills / s.games : 0
@@ -45,7 +47,6 @@ export function aggregate(perfs) {
     s.avgLastHits = s.lastHitsGames ? s.lastHits / s.lastHitsGames : null
     s.recent.sort((a, b) => new Date(b.at) - new Date(a.at))
     s.form = s.recent.slice(0, 5).map(r => r.won)
-    // current streak
     let streak = 0
     if (s.recent.length) {
       const kind = s.recent[0].won
@@ -53,7 +54,7 @@ export function aggregate(perfs) {
       s.streak = { kind: kind ? 'W' : 'L', n: streak }
     } else s.streak = null
   }
-  return byPlayer
+  return byKey
 }
 
 export const fmt = {
