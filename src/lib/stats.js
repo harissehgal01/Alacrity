@@ -14,7 +14,7 @@ export function aggregate(perfs) {
         gpm: 0, gpmGames: 0,
         xpm: 0, xpmGames: 0,
         lastHits: 0, lastHitsGames: 0,
-        maxKills: 0, maxHeroDamage: 0,
+        maxKills: 0, maxHeroDamage: 0, maxTowerDamage: 0,
         recent: [],
       })
     }
@@ -31,6 +31,7 @@ export function aggregate(perfs) {
     if (p.last_hits != null) { s.lastHits += p.last_hits; s.lastHitsGames += 1 }
     s.maxKills = Math.max(s.maxKills, p.kills || 0)
     s.maxHeroDamage = Math.max(s.maxHeroDamage, p.hero_damage || 0)
+    s.maxTowerDamage = Math.max(s.maxTowerDamage, p.tower_damage || 0)
     s.recent.push({ won: p.won, at: p._played_at })
   }
   for (const s of byKey.values()) {

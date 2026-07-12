@@ -11,6 +11,7 @@ import Draft from './screens/Draft'
 import Roster from './screens/Roster'
 import PublicLeaderboard from './screens/PublicLeaderboard'
 import SelfLog from './screens/SelfLog'
+import ScreenshotImport from './screens/ScreenshotImport'
 import ClaimIdentity from './screens/ClaimIdentity'
 import { usePresence } from './lib/presence'
 
@@ -139,7 +140,7 @@ export default function App() {
       {!loading && tab === 'draft' && <Draft />}
       {!loading && tab === 'matches' && (
         <>
-          {isAdmin ? <ImportMatch players={players} reload={reload} /> : <div className="notice" style={{ marginBottom: 14 }}>Only the admin can log matches. You can browse match history below.</div>}
+          {isAdmin ? <><ImportMatch players={players} reload={reload} /><ScreenshotImport players={players} reload={reload} /></> : <div className="notice" style={{ marginBottom: 14 }}>Only the admin can log matches. You can browse match history below.</div>}
           <Matches {...shared} />
         </>
       )}
