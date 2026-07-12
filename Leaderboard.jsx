@@ -46,10 +46,10 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
     <>
       <div className="leaders">
         {leaders.mostKills && <div className="leader"><div className="k">Most kills · game</div><div className="v num">{leaders.mostKills.v}</div><div className="who">{leaders.mostKills.who}</div></div>}
-        {leaders.topGameDmg && <div className="leader"><div className="k">Highest damage · game</div><div className="v num">{fmt.n(leaders.topGameDmg.v)}</div><div className="who">{leaders.topGameDmg.who}</div></div>}
+        {leaders.topGameDmg && <div className="leader"><div className="k">Highest damage</div><div className="v num">{fmt.n(leaders.topGameDmg.v)}</div><div className="who">{leaders.topGameDmg.who}</div></div>}
         {leaders.bestKda && <div className="leader"><div className="k">Best KDA <span className="formula">(K+A)/D</span></div><div className="v num">{fmt.d1(leaders.bestKda.v)}</div><div className="who">{leaders.bestKda.who}</div></div>}
-        {leaders.topNetWorth && <div className="leader"><div className="k">Highest net worth · game</div><div className="v num">{fmt.n(leaders.topNetWorth.v)}</div><div className="who">{leaders.topNetWorth.who}</div></div>}
-        {leaders.topBuilding && <div className="leader"><div className="k">Building dmg · game</div><div className="v num">{fmt.n(leaders.topBuilding.v)}</div><div className="who">{leaders.topBuilding.who}</div></div>}
+        {leaders.topNetWorth && <div className="leader"><div className="k">Highest net worth</div><div className="v num">{fmt.n(leaders.topNetWorth.v)}</div><div className="who">{leaders.topNetWorth.who}</div></div>}
+        {leaders.topBuilding && <div className="leader"><div className="k">Building dmg</div><div className="v num">{fmt.n(leaders.topBuilding.v)}</div><div className="who">{leaders.topBuilding.who}</div></div>}
       </div>
 
       <div className="row" style={{ marginBottom: 12 }}>
