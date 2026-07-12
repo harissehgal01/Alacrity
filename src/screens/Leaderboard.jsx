@@ -22,15 +22,15 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
 
   const leaders = useMemo(() => {
     const named = id => players.find(p => p.id === id)?.name || '—'
-    let mostKills = null, topAvgDmg = null, bestKda = null, topGpm = null, topBuilding = null
+    let mostKills = null, topGameDmg = null, bestKda = null, topNetWorth = null, topBuilding = null
     for (const [id, s] of stats) {
       if (!mostKills || s.maxKills > mostKills.v) mostKills = { v: s.maxKills, who: named(id) }
-      if (s.avgHeroDamage != null && (!topAvgDmg || s.avgHeroDamage > topAvgDmg.v)) topAvgDmg = { v: s.avgHeroDamage, who: named(id) }
+      if (s.maxHeroDamage > 0 && (!topGameDmg || s.maxHeroDamage > topGameDmg.v)) topGameDmg = { v: s.maxHeroDamage, who: named(id) }
       if (!bestKda || s.kda > bestKda.v) bestKda = { v: s.kda, who: named(id) }
-      if (s.avgGpm != null && (!topGpm || s.avgGpm > topGpm.v)) topGpm = { v: s.avgGpm, who: named(id) }
+      if (s.maxNetWorth > 0 && (!topNetWorth || s.maxNetWorth > topNetWorth.v)) topNetWorth = { v: s.maxNetWorth, who: named(id) }
       if (s.maxTowerDamage > 0 && (!topBuilding || s.maxTowerDamage > topBuilding.v)) topBuilding = { v: s.maxTowerDamage, who: named(id) }
     }
-    return { mostKills, topAvgDmg, bestKda, topGpm, topBuilding }
+    return { mostKills, topGameDmg, bestKda, topNetWorth, topBuilding }
   }, [stats, players])
 
   if (rows.length === 0) {
@@ -46,9 +46,9 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
     <>
       <div className="leaders">
         {leaders.mostKills && <div className="leader"><div className="k">Most kills · game</div><div className="v num">{leaders.mostKills.v}</div><div className="who">{leaders.mostKills.who}</div></div>}
-        {leaders.topAvgDmg && <div className="leader"><div className="k">Highest avg damage</div><div className="v num">{fmt.n(leaders.topAvgDmg.v)}</div><div className="who">{leaders.topAvgDmg.who}</div></div>}
+        {leaders.topGameDmg && <div className="leader"><div className="k">Highest damage · game</div><div className="v num">{fmt.n(leaders.topGameDmg.v)}</div><div className="who">{leaders.topGameDmg.who}</div></div>}
         {leaders.bestKda && <div className="leader"><div className="k">Best KDA <span className="formula">(K+A)/D</span></div><div className="v num">{fmt.d1(leaders.bestKda.v)}</div><div className="who">{leaders.bestKda.who}</div></div>}
-        {leaders.topGpm && <div className="leader"><div className="k">Avg GPM</div><div className="v num">{fmt.n(leaders.topGpm.v)}</div><div className="who">{leaders.topGpm.who}</div></div>}
+        {leaders.topNetWorth && <div className="leader"><div className="k">Highest net worth · game</div><div className="v num">{fmt.n(leaders.topNetWorth.v)}</div><div className="who">{leaders.topNetWorth.who}</div></div>}
         {leaders.topBuilding && <div className="leader"><div className="k">Building dmg · game</div><div className="v num">{fmt.n(leaders.topBuilding.v)}</div><div className="who">{leaders.topBuilding.who}</div></div>}
       </div>
 
