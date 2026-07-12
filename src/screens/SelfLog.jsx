@@ -46,6 +46,8 @@ export default function SelfLog({ user, reload }) {
         gpm: me.gpm, xpm: me.xpm,
         hero_damage: me.hero_damage, tower_damage: me.tower_damage,
         last_hits: me.last_hits, net_worth: me.net_worth,
+        obs_placed: me.obs_placed, sen_placed: me.sen_placed,
+        camps_stacked: me.camps_stacked, gold_spent: me.gold_spent,
       })
       if (pErr) throw pErr
       setMsg({ err: false, text: `Match ${fetched.dota_match_id} added to your public profile.` })

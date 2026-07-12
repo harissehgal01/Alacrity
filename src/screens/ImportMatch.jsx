@@ -53,6 +53,8 @@ export default function ImportMatch({ players, reload }) {
         gpm: p.gpm, xpm: p.xpm,
         hero_damage: p.hero_damage, tower_damage: p.tower_damage,
         last_hits: p.last_hits, net_worth: p.net_worth,
+        obs_placed: p.obs_placed, sen_placed: p.sen_placed,
+        camps_stacked: p.camps_stacked, gold_spent: p.gold_spent,
       }))
       const { error: pErr } = await supabase.from('match_performances').insert(rows)
       if (pErr) throw pErr

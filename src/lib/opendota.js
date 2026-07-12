@@ -50,6 +50,10 @@ export async function fetchMatch(matchId) {
       tower_damage: p.tower_damage ?? null,
       last_hits: p.last_hits ?? null,
       net_worth: p.net_worth ?? p.total_gold ?? null,
+      obs_placed: p.obs_placed ?? null,
+      sen_placed: p.sen_placed ?? null,
+      camps_stacked: p.camps_stacked ?? null,
+      gold_spent: p.gold_spent ?? null,
     })),
   }
 }
