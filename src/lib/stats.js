@@ -14,8 +14,9 @@ export function aggregate(perfs) {
         gpm: 0, gpmGames: 0,
         xpm: 0, xpmGames: 0,
         lastHits: 0, lastHitsGames: 0,
-        maxKills: 0, maxHeroDamage: 0, maxTowerDamage: 0, maxNetWorth: 0, maxAssists: 0, maxCampsStacked: 0,
+        maxKills: 0, maxHeroDamage: 0, maxTowerDamage: 0, maxNetWorth: 0, maxAssists: 0, maxCampsStacked: 0, maxDewards: 0,
         obs: 0, obsGames: 0, sen: 0, senGames: 0, camps: 0, campsGames: 0, goldSpent: 0, goldSpentGames: 0,
+        dewards: 0, dewardsGames: 0, supportGold: 0, supportGoldGames: 0,
         recent: [],
       })
     }
@@ -39,6 +40,8 @@ export function aggregate(perfs) {
     if (p.sen_placed != null) { s.sen += p.sen_placed; s.senGames += 1 }
     if (p.camps_stacked != null) { s.camps += p.camps_stacked; s.campsGames += 1; s.maxCampsStacked = Math.max(s.maxCampsStacked, p.camps_stacked) }
     if (p.gold_spent != null) { s.goldSpent += p.gold_spent; s.goldSpentGames += 1 }
+    if (p.dewards != null) { s.dewards += p.dewards; s.dewardsGames += 1; s.maxDewards = Math.max(s.maxDewards, p.dewards) }
+    if (p.support_gold_spent != null) { s.supportGold += p.support_gold_spent; s.supportGoldGames += 1 }
     s.recent.push({ won: p.won, at: p._played_at })
   }
   for (const s of byKey.values()) {
@@ -57,6 +60,8 @@ export function aggregate(perfs) {
     s.avgSen = s.senGames ? s.sen / s.senGames : null
     s.avgCampsStacked = s.campsGames ? s.camps / s.campsGames : null
     s.avgGoldSpent = s.goldSpentGames ? s.goldSpent / s.goldSpentGames : null
+    s.avgDewards = s.dewardsGames ? s.dewards / s.dewardsGames : null
+    s.avgSupportGold = s.supportGoldGames ? s.supportGold / s.supportGoldGames : null
     s.recent.sort((a, b) => new Date(b.at) - new Date(a.at))
     s.form = s.recent.slice(0, 5).map(r => r.won)
     let streak = 0
