@@ -152,7 +152,7 @@ export default function App() {
       {openPlayer && (
         <div className="modal-back" onClick={() => setOpenPlayer(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} onClose={() => setOpenPlayer(null)} />
+            <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} players={players} onClose={() => setOpenPlayer(null)} />
           </div>
         </div>
       )}

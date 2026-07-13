@@ -314,3 +314,13 @@ a { color: var(--brand-hi); text-decoration: none; }
 .punc-badge.good { color: var(--brand-hi); border-color: color-mix(in srgb, var(--brand) 35%, var(--line-2)); }
 .punc-badge.mid { color: #B79A4A; border-color: color-mix(in srgb, #B79A4A 35%, var(--line-2)); }
 .punc-badge.bad { color: #A0656A; border-color: color-mix(in srgb, #A0656A 35%, var(--line-2)); }
+
+/* profile: match logs scrollable list + full match detail view */
+.match-log-scroll { max-height: 320px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.match-log-row { width: 100%; text-align: left; cursor: pointer; transition: background .12s; border-radius: 8px; }
+.match-log-row:hover { background: var(--glass); }
+.match-log-detail-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px;
+  background: var(--bg0); border: 1px solid var(--line); border-radius: 10px;
+}
+[data-theme="light"] .match-log-detail-row { background: var(--bg3); }
