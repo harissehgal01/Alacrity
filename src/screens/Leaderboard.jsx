@@ -34,7 +34,7 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
       if (s.maxCampsStacked > 0 && (!topCamps || s.maxCampsStacked > topCamps.v)) topCamps = { v: s.maxCampsStacked, who: named(id) }
       if (s.maxDewards > 0 && (!topDewards || s.maxDewards > topDewards.v)) topDewards = { v: s.maxDewards, who: named(id) }
     }
-    return { mostKills, topGameDmg, bestKda, topNetWorth, topBuilding, mostAssists, topCamps, topDewards }
+    return { mostKills, topGameDmg, bestKda, topNetWorth, topBuilding, mostAssists, mostVersatile, topCamps, topDewards }
   }, [stats, players])
 
   if (rows.length === 0) {
