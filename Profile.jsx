@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { aggregate, fmt } from '../lib/stats'
 
-export default function Profile({ player, perfs, matches, punc = [], onClose }) {
+export default function Profile({ player, perfs, matches, punc = [], players = [], onClose }) {
+  const [openMatch, setOpenMatch] = useState(null)
   const s = useMemo(() => aggregate(perfs.filter(p => p.player_id === player.id)).get(player.id), [perfs, player.id])
   const myPunc = useMemo(() => punc.filter(r => r.player_id === player.id), [punc, player.id])
 
@@ -18,14 +19,17 @@ export default function Profile({ player, perfs, matches, punc = [], onClose }) 
     }
   }, [myPunc])
 
-  const recentMatches = useMemo(() => {
+  const allMatches = useMemo(() => {
     const mine = perfs.filter(p => p.player_id === player.id)
     return mine
       .map(p => ({ ...p, match: matches.find(m => m.id === p.match_id) }))
       .filter(p => p.match)
       .sort((a, b) => new Date(b.match.played_at) - new Date(a.match.played_at))
-      .slice(0, 8)
   }, [perfs, matches, player.id])
+
+  if (openMatch) {
+    return <MatchLog matchRow={openMatch} perfs={perfs} players={players} onBack={() => setOpenMatch(null)} onClose={onClose} />
+  }
 
   return (
     <>
@@ -59,16 +63,22 @@ export default function Profile({ player, perfs, matches, punc = [], onClose }) 
             <div className="stat"><div className="k">Avg smoke</div><div className="v num">{fmt.d1(s.avgSmoke)}</div></div>
           </div>
 
-          <h2 style={{ fontSize: 14 }}>Recent games</h2>
-          {recentMatches.map(p => (
-            <div key={p.id} className="match-row small">
-              <span className={`tag ${p.won ? 'rad' : 'dire'}`}>{p.won ? 'W' : 'L'}</span>
-              <div className="grow">
-                {p.hero_name || 'Unknown hero'} <span className="mute num">· {p.kills}/{p.deaths}/{p.assists} · {fmt.n(p.hero_damage)} dmg</span>
-              </div>
-              <span className="mute num">{new Date(p.match.played_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
-            </div>
-          ))}
+          <div className="row" style={{ marginBottom: 4 }}>
+            <h2 style={{ fontSize: 14, marginBottom: 0 }}>Match logs</h2>
+            <span className="mute small" style={{ marginLeft: 'auto' }}>{allMatches.length} game{allMatches.length === 1 ? '' : 's'} · tap to open</span>
+          </div>
+          <div className="match-log-scroll">
+            {allMatches.map(p => (
+              <button key={p.id} className="match-row small match-log-row" onClick={() => setOpenMatch(p)}>
+                <span className={`tag ${p.won ? 'rad' : 'dire'}`}>{p.won ? 'W' : 'L'}</span>
+                <div className="grow">
+                  {p.hero_name || 'Unknown hero'} <span className="mute num">· {p.kills}/{p.deaths}/{p.assists} · {fmt.n(p.hero_damage)} dmg</span>
+                </div>
+                <span className="mute num">{new Date(p.match.played_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+                <span className="mute" style={{ marginLeft: 6 }}>›</span>
+              </button>
+            ))}
+          </div>
         </>
       )}
 
@@ -83,6 +93,62 @@ export default function Profile({ player, perfs, matches, punc = [], onClose }) 
           <div className="stat"><div className="k">No-shows</div><div className="v num">{puncStats.noShows}</div></div>
         </div>
       )}
+    </>
+  )
+}
+
+function MatchLog({ matchRow, perfs, players, onBack, onClose }) {
+  const nameOf = row => {
+    if (row.player_id) return players.find(p => p.id === row.player_id)?.name || 'Unknown'
+    return 'Guest'
+  }
+  const rows = useMemo(
+    () => perfs.filter(p => p.match_id === matchRow.match_id).sort((a, b) => (b.kills - a.kills)),
+    [perfs, matchRow.match_id]
+  )
+  const radiant = rows.filter(r => r.team === 'radiant')
+  const dire = rows.filter(r => r.team === 'dire')
+  const m = matchRow.match
+
+  return (
+    <>
+      <div className="row" style={{ marginBottom: 10 }}>
+        <button className="btn sm ghost" onClick={onBack}>‹ Back</button>
+        <span className="grow" />
+        <button className="btn sm ghost" onClick={onClose}>Close</button>
+      </div>
+
+      <div className="row" style={{ marginBottom: 14 }}>
+        <span className={`tag ${m.radiant_win ? 'rad' : 'dire'}`}>{m.radiant_win ? 'Radiant' : 'Dire'} won</span>
+        <span className="mute small">{new Date(m.played_at).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+        {m.duration_seconds != null && <span className="mute small num">· {fmt.dur(m.duration_seconds)}</span>}
+      </div>
+
+      {[['Radiant', radiant, 'rad'], ['Dire', dire, 'dire']].map(([label, side, tagClass]) => (
+        <div key={label} style={{ marginBottom: 16 }}>
+          <div className="eyebrow" style={{ marginBottom: 6, color: label === 'Radiant' ? 'var(--radiant)' : 'var(--dire-hi)' }}>{label}</div>
+          {side.map(r => (
+            <div key={r.id} className="match-log-detail-row">
+              <div className="grow">
+                <div style={{ fontWeight: 600 }}>{nameOf(r)}<span className="mute" style={{ fontWeight: 400 }}> · {r.hero_name || '—'}</span></div>
+                <div className="mute small num">
+                  {r.kills}/{r.deaths}/{r.assists} · {fmt.n(r.net_worth)} net · {fmt.n(r.gpm)} GPM · {fmt.n(r.hero_damage)} dmg
+                  {r.tower_damage != null && <> · {fmt.n(r.tower_damage)} tower</>}
+                </div>
+                {(r.obs_placed != null || r.sen_placed != null || r.support_gold_spent != null) && (
+                  <div className="mute small num">
+                    {r.obs_placed != null && <>{r.obs_placed} obs · </>}
+                    {r.sen_placed != null && <>{r.sen_placed} sen · </>}
+                    {r.dewards != null && <>{r.dewards} dewards · </>}
+                    {r.support_gold_spent != null && <>{fmt.n(r.support_gold_spent)} support gold</>}
+                  </div>
+                )}
+              </div>
+              {r.won && <span className="mute" style={{ color: 'var(--gold)' }}>W</span>}
+            </div>
+          ))}
+        </div>
+      ))}
     </>
   )
 }
