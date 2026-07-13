@@ -15,8 +15,10 @@ export function aggregate(perfs) {
         xpm: 0, xpmGames: 0,
         lastHits: 0, lastHitsGames: 0,
         maxKills: 0, maxHeroDamage: 0, maxTowerDamage: 0, maxNetWorth: 0, maxAssists: 0, maxCampsStacked: 0, maxDewards: 0,
+        maxKillsHero: null, maxHeroDamageHero: null, maxTowerDamageHero: null, maxNetWorthHero: null, maxAssistsHero: null,
+        heroesPlayed: new Set(),
         obs: 0, obsGames: 0, sen: 0, senGames: 0, camps: 0, campsGames: 0, goldSpent: 0, goldSpentGames: 0,
-        dewards: 0, dewardsGames: 0, supportGold: 0, supportGoldGames: 0,
+        dewards: 0, dewardsGames: 0, supportGold: 0, supportGoldGames: 0, smoke: 0, smokeGames: 0,
         recent: [],
       })
     }
@@ -31,17 +33,19 @@ export function aggregate(perfs) {
     if (p.gpm != null) { s.gpm += p.gpm; s.gpmGames += 1 }
     if (p.xpm != null) { s.xpm += p.xpm; s.xpmGames += 1 }
     if (p.last_hits != null) { s.lastHits += p.last_hits; s.lastHitsGames += 1 }
-    s.maxKills = Math.max(s.maxKills, p.kills || 0)
-    s.maxHeroDamage = Math.max(s.maxHeroDamage, p.hero_damage || 0)
-    s.maxTowerDamage = Math.max(s.maxTowerDamage, p.tower_damage || 0)
-    s.maxNetWorth = Math.max(s.maxNetWorth, p.net_worth || 0)
-    s.maxAssists = Math.max(s.maxAssists, p.assists || 0)
+    if ((p.kills || 0) >= s.maxKills) { s.maxKills = p.kills || 0; s.maxKillsHero = p.hero_name || s.maxKillsHero }
+    if ((p.hero_damage || 0) >= s.maxHeroDamage) { s.maxHeroDamage = p.hero_damage || 0; s.maxHeroDamageHero = p.hero_name || s.maxHeroDamageHero }
+    if (p.hero_name) s.heroesPlayed.add(p.hero_name)
+    if ((p.tower_damage || 0) >= s.maxTowerDamage) { s.maxTowerDamage = p.tower_damage || 0; s.maxTowerDamageHero = p.hero_name || s.maxTowerDamageHero }
+    if ((p.net_worth || 0) >= s.maxNetWorth) { s.maxNetWorth = p.net_worth || 0; s.maxNetWorthHero = p.hero_name || s.maxNetWorthHero }
+    if ((p.assists || 0) >= s.maxAssists) { s.maxAssists = p.assists || 0; s.maxAssistsHero = p.hero_name || s.maxAssistsHero }
     if (p.obs_placed != null) { s.obs += p.obs_placed; s.obsGames += 1 }
     if (p.sen_placed != null) { s.sen += p.sen_placed; s.senGames += 1 }
     if (p.camps_stacked != null) { s.camps += p.camps_stacked; s.campsGames += 1; s.maxCampsStacked = Math.max(s.maxCampsStacked, p.camps_stacked) }
     if (p.gold_spent != null) { s.goldSpent += p.gold_spent; s.goldSpentGames += 1 }
     if (p.dewards != null) { s.dewards += p.dewards; s.dewardsGames += 1; s.maxDewards = Math.max(s.maxDewards, p.dewards) }
     if (p.support_gold_spent != null) { s.supportGold += p.support_gold_spent; s.supportGoldGames += 1 }
+    if (p.smoke_purchased != null) { s.smoke += p.smoke_purchased; s.smokeGames += 1 }
     s.recent.push({ won: p.won, at: p._played_at })
   }
   for (const s of byKey.values()) {
@@ -62,6 +66,8 @@ export function aggregate(perfs) {
     s.avgGoldSpent = s.goldSpentGames ? s.goldSpent / s.goldSpentGames : null
     s.avgDewards = s.dewardsGames ? s.dewards / s.dewardsGames : null
     s.avgSupportGold = s.supportGoldGames ? s.supportGold / s.supportGoldGames : null
+    s.avgSmoke = s.smokeGames ? s.smoke / s.smokeGames : null
+    s.versatility = s.heroesPlayed.size
     s.recent.sort((a, b) => new Date(b.at) - new Date(a.at))
     s.form = s.recent.slice(0, 5).map(r => r.won)
     let streak = 0
