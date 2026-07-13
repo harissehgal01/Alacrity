@@ -22,7 +22,7 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
 
   const leaders = useMemo(() => {
     const named = id => players.find(p => p.id === id)?.name || '—'
-    let mostKills = null, topGameDmg = null, bestKda = null, topNetWorth = null, topBuilding = null, mostAssists = null
+    let mostKills = null, topGameDmg = null, bestKda = null, topNetWorth = null, topBuilding = null, mostAssists = null, topCamps = null, topDewards = null
     for (const [id, s] of stats) {
       if (!mostKills || s.maxKills > mostKills.v) mostKills = { v: s.maxKills, who: named(id) }
       if (s.maxHeroDamage > 0 && (!topGameDmg || s.maxHeroDamage > topGameDmg.v)) topGameDmg = { v: s.maxHeroDamage, who: named(id) }
@@ -30,8 +30,10 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
       if (s.maxNetWorth > 0 && (!topNetWorth || s.maxNetWorth > topNetWorth.v)) topNetWorth = { v: s.maxNetWorth, who: named(id) }
       if (s.maxTowerDamage > 0 && (!topBuilding || s.maxTowerDamage > topBuilding.v)) topBuilding = { v: s.maxTowerDamage, who: named(id) }
       if (s.maxAssists > 0 && (!mostAssists || s.maxAssists > mostAssists.v)) mostAssists = { v: s.maxAssists, who: named(id) }
+      if (s.maxCampsStacked > 0 && (!topCamps || s.maxCampsStacked > topCamps.v)) topCamps = { v: s.maxCampsStacked, who: named(id) }
+      if (s.maxDewards > 0 && (!topDewards || s.maxDewards > topDewards.v)) topDewards = { v: s.maxDewards, who: named(id) }
     }
-    return { mostKills, topGameDmg, bestKda, topNetWorth, topBuilding, mostAssists }
+    return { mostKills, topGameDmg, bestKda, topNetWorth, topBuilding, mostAssists, topCamps, topDewards }
   }, [stats, players])
 
   if (rows.length === 0) {
@@ -52,6 +54,8 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
         {leaders.topNetWorth && <div className="leader"><div className="k">Highest net worth</div><div className="v num">{fmt.n(leaders.topNetWorth.v)}</div><div className="who">{leaders.topNetWorth.who}</div></div>}
         {leaders.topBuilding && <div className="leader"><div className="k">Building dmg</div><div className="v num">{fmt.n(leaders.topBuilding.v)}</div><div className="who">{leaders.topBuilding.who}</div></div>}
         {leaders.mostAssists && <div className="leader"><div className="k">Most assists</div><div className="v num">{leaders.mostAssists.v}</div><div className="who">{leaders.mostAssists.who}</div></div>}
+        {leaders.topCamps && <div className="leader"><div className="k">Camps stacked</div><div className="v num">{leaders.topCamps.v}</div><div className="who">{leaders.topCamps.who}</div></div>}
+        {leaders.topDewards && <div className="leader"><div className="k">Dewards</div><div className="v num">{leaders.topDewards.v}</div><div className="who">{leaders.topDewards.who}</div></div>}
       </div>
 
       <div className="row" style={{ marginBottom: 12 }}>
