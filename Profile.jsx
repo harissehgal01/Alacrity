@@ -53,10 +53,10 @@ export default function Profile({ player, perfs, matches, punc = [], onClose }) 
             <div className="stat"><div className="k">Avg tower dmg</div><div className="v num">{fmt.n(s.avgTowerDamage)}</div></div>
             <div className="stat"><div className="k">Avg obs wards</div><div className="v num">{fmt.d1(s.avgObs)}</div></div>
             <div className="stat"><div className="k">Avg sentry wards</div><div className="v num">{fmt.d1(s.avgSen)}</div></div>
-            <div className="stat"><div className="k">Avg gold spent</div><div className="v num">{fmt.n(s.avgGoldSpent)}</div></div>
             <div className="stat"><div className="k">Avg camps stacked</div><div className="v num">{fmt.d1(s.avgCampsStacked)}</div></div>
             <div className="stat"><div className="k">Avg dewards</div><div className="v num">{fmt.d1(s.avgDewards)}</div></div>
             <div className="stat"><div className="k">Avg support gold</div><div className="v num">{fmt.n(s.avgSupportGold)}</div></div>
+            <div className="stat"><div className="k">Avg smoke</div><div className="v num">{fmt.d1(s.avgSmoke)}</div></div>
           </div>
 
           <h2 style={{ fontSize: 14 }}>Recent games</h2>
