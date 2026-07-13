@@ -12,11 +12,13 @@ import Roster from './screens/Roster'
 import PublicLeaderboard from './screens/PublicLeaderboard'
 import SelfLog from './screens/SelfLog'
 import ScreenshotImport from './screens/ScreenshotImport'
+import Stats from './screens/Stats'
 import ClaimIdentity from './screens/ClaimIdentity'
 import { usePresence } from './lib/presence'
 
 const TABS = [
   ['board', 'Leaderboard'],
+  ['stats', 'Stats'],
   ['draft', 'Draft'],
   ['matches', 'Matches'],
   ['punctuality', 'Punctuality'],
@@ -137,6 +139,7 @@ export default function App() {
           )}
         </>
       )}
+      {!loading && tab === 'stats' && <Stats players={players} perfs={perfs} openProfile={setOpenPlayer} />}
       {!loading && tab === 'draft' && <Draft />}
       {!loading && tab === 'matches' && (
         <>
