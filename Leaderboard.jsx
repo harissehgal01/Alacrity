@@ -54,8 +54,6 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
         {leaders.topNetWorth && <div className="leader"><div className="k">Highest net worth</div><div className="v num">{fmt.n(leaders.topNetWorth.v)}</div><div className="who">{leaders.topNetWorth.who}</div></div>}
         {leaders.topBuilding && <div className="leader"><div className="k">Building dmg</div><div className="v num">{fmt.n(leaders.topBuilding.v)}</div><div className="who">{leaders.topBuilding.who}</div></div>}
         {leaders.mostAssists && <div className="leader"><div className="k">Most assists</div><div className="v num">{leaders.mostAssists.v}</div><div className="who">{leaders.mostAssists.who}</div></div>}
-        {leaders.topCamps && <div className="leader"><div className="k">Camps stacked</div><div className="v num">{leaders.topCamps.v}</div><div className="who">{leaders.topCamps.who}</div></div>}
-        {leaders.topDewards && <div className="leader"><div className="k">Dewards</div><div className="v num">{leaders.topDewards.v}</div><div className="who">{leaders.topDewards.who}</div></div>}
       </div>
 
       <div className="row" style={{ marginBottom: 12 }}>
