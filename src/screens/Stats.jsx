@@ -142,14 +142,14 @@ export default function Stats({ players, perfs, matches, openProfile }) {
           <div className="stat"><div className="k">Total hours tracked</div><div className="v num">{facts.gamesWithDuration ? fmt.d1(facts.totalHours) : '—'}</div></div>
           {facts.biggestBlowout && (
             <div className="stat" style={{ gridColumn: '1 / -1' }}>
-              <div className="k">Biggest blowout</div>
-              <div className="v num">{facts.biggestBlowout.winner} — {facts.biggestBlowout.radiant} to {facts.biggestBlowout.dire} kills</div>
+              <div className="k">Most one-sided game</div>
+              <div className="v num">{facts.biggestBlowout.winner} won {facts.biggestBlowout.radiant}–{facts.biggestBlowout.dire} on total kills</div>
               <div className="who">{new Date(facts.biggestBlowout.played_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</div>
             </div>
           )}
           {facts.mostOneSided && (
             <div className="stat" style={{ gridColumn: '1 / -1' }}>
-              <div className="k">Most one-sided performance <span className="formula">(K+A)/D</span></div>
+              <div className="k">Most one-sided performance <span className="formula">(K+A)/D, single player</span></div>
               <div className="v num">{fmt.d1(facts.mostOneSided.kda)}</div>
               <div className="who">{facts.mostOneSided.who} · {facts.mostOneSided.hero} · {facts.mostOneSided.kills}/{facts.mostOneSided.deaths}/{facts.mostOneSided.assists}</div>
             </div>
