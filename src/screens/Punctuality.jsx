@@ -49,6 +49,24 @@ export default function Punctuality({ players, isAdmin }) {
     return t
   }, [rows, players])
 
+  const arrivals = useMemo(() => {
+    const m = new Map()
+    for (const d of dates) {
+      const attended = rows.filter(r => r.session_date === d && !r.no_show && r.minutes_late != null)
+      if (attended.length === 0) { m.set(d, null); continue }
+      const minVal = Math.min(...attended.map(r => r.minutes_late))
+      const maxVal = Math.max(...attended.map(r => r.minutes_late))
+      const nameOf = pid => players.find(p => p.id === pid)?.name || '—'
+      m.set(d, {
+        first: attended.filter(r => r.minutes_late === minVal).map(r => nameOf(r.player_id)),
+        firstVal: minVal,
+        last: attended.filter(r => r.minutes_late === maxVal).map(r => nameOf(r.player_id)),
+        lastVal: maxVal,
+      })
+    }
+    return m
+  }, [dates, rows, players])
+
   async function saveSession() {
     setBusy(true)
     const payload = players.filter(p => entries[p.id] !== undefined).map(p => ({
@@ -115,6 +133,22 @@ export default function Punctuality({ players, isAdmin }) {
         )}
 
         {dates.length === 0 && !adding && <p className="mute small">No sessions yet. Record the first one above.</p>}
+
+        {dates.length > 0 && (
+          <div className="arrivals-list">
+            {[...dates].reverse().map(d => {
+              const a = arrivals.get(d)
+              if (!a) return null
+              return (
+                <div key={d} className="arrival-row">
+                  <span className="mute num small">{new Date(d + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+                  <span className="small"><span className="arrival-tag first">First</span> {a.first.join(', ')}{a.firstVal !== 0 && <span className="mute num"> ({a.firstVal > 0 ? `+${a.firstVal}` : a.firstVal}m)</span>}</span>
+                  <span className="small"><span className="arrival-tag last">Last</span> {a.last.join(', ')}{a.lastVal !== 0 && <span className="mute num"> ({a.lastVal > 0 ? `+${a.lastVal}` : a.lastVal}m)</span>}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {dates.length > 0 && (
           <div className="punc-scroll">
