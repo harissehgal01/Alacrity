@@ -135,22 +135,6 @@ export default function Punctuality({ players, isAdmin }) {
         {dates.length === 0 && !adding && <p className="mute small">No sessions yet. Record the first one above.</p>}
 
         {dates.length > 0 && (
-          <div className="arrivals-list">
-            {[...dates].reverse().map(d => {
-              const a = arrivals.get(d)
-              if (!a) return null
-              return (
-                <div key={d} className="arrival-row">
-                  <span className="mute num small">{new Date(d + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
-                  <span className="small"><span className="arrival-tag first">First</span> {a.first.join(', ')}{a.firstVal !== 0 && <span className="mute num"> ({a.firstVal > 0 ? `+${a.firstVal}` : a.firstVal}m)</span>}</span>
-                  <span className="small"><span className="arrival-tag last">Last</span> {a.last.join(', ')}{a.lastVal !== 0 && <span className="mute num"> ({a.lastVal > 0 ? `+${a.lastVal}` : a.lastVal}m)</span>}</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {dates.length > 0 && (
           <div className="punc-scroll">
             <table className="punc-table">
               <thead>
@@ -173,10 +157,15 @@ export default function Punctuality({ players, isAdmin }) {
                       <td>{p.name}</td>
                       {dates.map(d => {
                         const r = byKey.get(`${p.id}|${d}`)
+                        const a = arrivals.get(d)
+                        const isFirst = a && !r?.no_show && a.first.includes(p.name)
+                        const isLast = a && !r?.no_show && a.last.includes(p.name) && a.first[0] !== a.last[0]
                         return (
                           <td key={d}>
                             <button className={`cellbtn ${cellClass(r)}`} onClick={() => isAdmin && setEdit({ player: p, date: d, row: r || null })}>
+                              {isFirst && <span className="arrival-icon" title="First to arrive">⭐</span>}
                               {cellText(r)}
+                              {isLast && <span className="arrival-icon" title="Last to arrive">🐢</span>}
                             </button>
                           </td>
                         )
