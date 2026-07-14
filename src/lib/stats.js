@@ -80,6 +80,88 @@ export function aggregate(perfs) {
   return byKey
 }
 
+// Hero-level aggregation: pick counts, win rates, and each player's signature hero.
+export function heroStats(perfs) {
+  const byHero = new Map()
+  const byPlayerHero = new Map() // player key -> Map(hero -> count)
+  for (const p of perfs) {
+    if (!p.hero_name) continue
+    const key = p.player_id || p.profile_id
+    if (!byHero.has(p.hero_name)) byHero.set(p.hero_name, { hero: p.hero_name, games: 0, wins: 0 })
+    const h = byHero.get(p.hero_name)
+    h.games += 1
+    if (p.won) h.wins += 1
+    if (key) {
+      if (!byPlayerHero.has(key)) byPlayerHero.set(key, new Map())
+      const m = byPlayerHero.get(key)
+      m.set(p.hero_name, (m.get(p.hero_name) || 0) + 1)
+    }
+  }
+  for (const h of byHero.values()) h.winRate = h.games ? h.wins / h.games : 0
+  const signatureHero = new Map()
+  for (const [key, m] of byPlayerHero) {
+    let best = null
+    for (const [hero, count] of m) if (!best || count > best.count) best = { hero, count }
+    signatureHero.set(key, best)
+  }
+  return { byHero: [...byHero.values()], signatureHero }
+}
+
+// Ban counts from completed draft rooms.
+export function banStats(draftRooms, heroes) {
+  const byId = new Map(heroes.map(h => [h.id, h.name]))
+  const counts = new Map()
+  for (const room of draftRooms) {
+    for (const a of room.actions || []) {
+      if (a.type !== 'ban') continue
+      const name = byId.get(a.hero_id) || `Hero #${a.hero_id}`
+      counts.set(name, (counts.get(name) || 0) + 1)
+    }
+  }
+  return [...counts.entries()].map(([hero, count]) => ({ hero, count })).sort((a, b) => b.count - a.count)
+}
+
+// Assorted crew-wide fun facts.
+export function funFacts(matches, perfs, players) {
+  const named = id => players.find(p => p.id === id)?.name || 'Unknown'
+  const withDuration = matches.filter(m => m.duration_seconds != null)
+
+  const teamKills = new Map() // match_id -> { radiant, dire }
+  for (const p of perfs) {
+    if (!teamKills.has(p.match_id)) teamKills.set(p.match_id, { radiant: 0, dire: 0 })
+    teamKills.get(p.match_id)[p.team] += p.kills || 0
+  }
+  let biggestBlowout = null
+  for (const m of matches) {
+    const tk = teamKills.get(m.id)
+    if (!tk) continue
+    const margin = Math.abs(tk.radiant - tk.dire)
+    if (!biggestBlowout || margin > biggestBlowout.margin) {
+      biggestBlowout = { margin, radiant: tk.radiant, dire: tk.dire, winner: m.radiant_win ? 'Radiant' : 'Dire', played_at: m.played_at }
+    }
+  }
+
+  let mostOneSided = null
+  for (const p of perfs) {
+    const kda = p.deaths > 0 ? (p.kills + p.assists) / p.deaths : (p.kills + p.assists)
+    if (!mostOneSided || kda > mostOneSided.kda) {
+      mostOneSided = { kda, who: named(p.player_id), hero: p.hero_name, kills: p.kills, deaths: p.deaths, assists: p.assists }
+    }
+  }
+
+  const longest = withDuration.length ? withDuration.reduce((a, b) => (a.duration_seconds > b.duration_seconds ? a : b)) : null
+  const shortest = withDuration.length ? withDuration.reduce((a, b) => (a.duration_seconds < b.duration_seconds ? a : b)) : null
+  const totalSeconds = withDuration.reduce((sum, m) => sum + m.duration_seconds, 0)
+
+  return {
+    biggestBlowout, mostOneSided, longest, shortest,
+    totalGames: matches.length,
+    gamesWithDuration: withDuration.length,
+    totalHours: totalSeconds / 3600,
+  }
+}
+
+
 export const fmt = {
   pct: v => `${Math.round(v * 100)}%`,
   n: v => v == null ? '—' : Math.round(v).toLocaleString(),
