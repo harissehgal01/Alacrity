@@ -325,9 +325,6 @@ a { color: var(--brand-hi); text-decoration: none; }
 }
 [data-theme="light"] .match-log-detail-row { background: var(--bg3); }
 
-/* punctuality: first/last arrival per session */
-.arrivals-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.arrival-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; background: var(--glass); border: 1px solid var(--line); border-radius: 10px; }
-.arrival-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; margin-right: 5px; }
-.arrival-tag.first { color: var(--radiant); background: color-mix(in srgb, var(--radiant) 16%, transparent); }
-.arrival-tag.last { color: var(--dire-hi); background: color-mix(in srgb, var(--dire) 16%, transparent); }
+/* punctuality: first/last arrival icons on the cell itself */
+.cellbtn { position: relative; }
+.arrival-icon { font-size: 10px; display: inline-block; margin: 0 2px; vertical-align: middle; filter: drop-shadow(0 0 2px rgba(0,0,0,.5)); }
