@@ -139,7 +139,7 @@ export default function App() {
           )}
         </>
       )}
-      {!loading && tab === 'stats' && <Stats players={players} perfs={perfs} openProfile={setOpenPlayer} />}
+      {!loading && tab === 'stats' && <Stats players={players} perfs={perfs} matches={matches} openProfile={setOpenPlayer} />}
       {!loading && tab === 'draft' && <Draft />}
       {!loading && tab === 'matches' && (
         <>
