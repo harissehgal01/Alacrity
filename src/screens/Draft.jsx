@@ -207,7 +207,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     setTimeout(async () => {
       const { data } = await supabase.from('draft_rooms').update({
         status: 'drafting',
-        config: { stage: 'winner_choice', tossWinner: winnerAB },
+        config: { ...cfg, stage: 'winner_choice', tossWinner: winnerAB },
       }).eq('id', room.id).select().single()
       setSpinning(false); if (data) setRoom(data)
     }, 1000)
