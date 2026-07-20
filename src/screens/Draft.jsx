@@ -344,8 +344,17 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     const loserLabel = lbl(cfg.tossWinner === 'A' ? 'B' : 'A')
     const iWon = mySeatAB === cfg.tossWinner
     const iLost = mySeatAB && mySeatAB !== cfg.tossWinner
+    const plist = seat => teamMeta[seat]?.players?.trim() || ''
     return (
       <div className="card toss-wrap">
+        <div className="row" style={{ justifyContent: 'center', gap: 20, marginBottom: 8, flexWrap: 'wrap' }}>
+          {['A', 'B'].map(seat => (
+            <div key={seat} style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700 }}>{lbl(seat)}{captains[seat === 'A' ? room.radiant_seat : room.dire_seat] ? ` · ${captains[seat === 'A' ? room.radiant_seat : room.dire_seat]}` : ''}</div>
+              {plist(seat) && <div className="small mute">{plist(seat)}</div>}
+            </div>
+          ))}
+        </div>
         <div className="coin">{winnerLabel}</div>
         <h2 style={{ marginBottom: 4 }}>{winnerLabel} wins the toss</h2>
         {stage === 'winner_choice' && (iWon ? (
