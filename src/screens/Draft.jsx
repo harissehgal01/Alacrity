@@ -7,6 +7,8 @@ import { createRoom, findRoom, claimSeat } from '../lib/room'
 
 const ATTRS = [['str', 'Strength'], ['agi', 'Agility'], ['int', 'Intelligence'], ['all', 'Universal']]
 
+const nameOf = user => user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Guest'
+
 export default function Draft() {
   const { user } = useAuth()
   const [heroes, setHeroes] = useState([])
@@ -96,7 +98,43 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const [selected, setSelected] = useState(null) // hero staged, awaiting confirm
   const [search, setSearch] = useState('')
   const [nameDraft, setNameDraft] = useState({ team: '', players: '' })
+  const [captains, setCaptains] = useState({}) // userId -> display_name
+  const [chat, setChat] = useState([])
+  const [chatText, setChatText] = useState('')
+  const chatEnd = useRef(null)
   const applying = useRef(false)
+
+  // captain display names
+  useEffect(() => {
+    const ids = [room.radiant_seat, room.dire_seat].filter(Boolean)
+    if (!ids.length) return
+    supabase.from('profiles').select('id, display_name').in('id', ids)
+      .then(({ data }) => setCaptains(Object.fromEntries((data || []).map(p => [p.id, p.display_name || 'Captain']))))
+  }, [room.radiant_seat, room.dire_seat])
+
+  // chat: load + realtime
+  useEffect(() => {
+    supabase.from('draft_messages').select('*').eq('room_id', room.id)
+      .order('created_at', { ascending: true }).limit(200)
+      .then(({ data }) => setChat(data || []))
+    const ch = supabase.channel('chat-' + room.id)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'draft_messages', filter: `room_id=eq.${room.id}` },
+        payload => setChat(c => c.some(m => m.id === payload.new.id) ? c : [...c, payload.new]))
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [room.id])
+
+  useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat.length])
+
+  async function sendChat() {
+    const body = chatText.trim()
+    if (!body) return
+    setChatText('')
+    const senderName = captains[user.id] || nameOf(user)
+    const { data } = await supabase.from('draft_messages')
+      .insert({ room_id: room.id, sender_id: user.id, sender_name: senderName, body }).select().single()
+    if (data) setChat(c => c.some(m => m.id === data.id) ? c : [...c, data])
+  }
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 400); return () => clearInterval(t) }, [])
   useEffect(() => { setSelected(null) }, [room.current_step])
 
@@ -265,7 +303,10 @@ function Room({ room, setRoom, heroes, user, onExit }) {
             return (
               <div key={seat} className={`seat ${taken ? 'taken' : ''} ${isMe ? 'seat-me' : ''}`}>
                 <div style={{ fontWeight: 700 }}>{seatLabel(seat)}</div>
-                <div className="st">{taken ? (isMe ? 'You' : 'Claimed') : 'Open'}{seatPlayers(seat) && <div className="small mute" style={{ marginTop: 2 }}>{seatPlayers(seat)}</div>}</div>
+                <div className="st">
+                  {taken ? (captains[seatUser] || 'Claimed') + (isMe ? ' (you)' : '') : 'Open'}
+                  {seatPlayers(seat) && <div className="small mute" style={{ marginTop: 2 }}>{seatPlayers(seat)}</div>}
+                </div>
                 {!taken && !mySeatAB && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => claim(seat)}>Claim</button>}
               </div>
             )
@@ -290,6 +331,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — waiting for the captains to begin…</div>}
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
       </div>
     )
   }
@@ -335,13 +377,21 @@ function Room({ room, setRoom, heroes, user, onExit }) {
             </div>
           </>
         ) : <div className="waiting-lock">Waiting for {loserLabel} to choose pick order…</div>)}
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
       </div>
     )
   }
 
   /* ── DRAFTING ── */
-  const radiantLabel = seatLabel(cfg.sides?.A === 'radiant' ? 'A' : 'B')
-  const direLabel = seatLabel(cfg.sides?.A === 'dire' ? 'A' : 'B')
+  const radiantSeatAB = cfg.sides?.A === 'radiant' ? 'A' : 'B'
+  const direSeatAB = cfg.sides?.A === 'dire' ? 'A' : 'B'
+  const radiantLabel = seatLabel(radiantSeatAB)
+  const direLabel = seatLabel(direSeatAB)
+  const seatUserId = seat => (seat === 'A' ? room.radiant_seat : room.dire_seat)
+  const radiantCaptain = captains[seatUserId(radiantSeatAB)] || ''
+  const direCaptain = captains[seatUserId(direSeatAB)] || ''
+  const radiantPlayers = seatPlayers(radiantSeatAB)
+  const direPlayers = seatPlayers(direSeatAB)
 
   return (
     <div className="card">
@@ -357,6 +407,8 @@ function Room({ room, setRoom, heroes, user, onExit }) {
         <div className={`dt-team ${currentSide === 'radiant' ? 'turn' : ''}`}>
           <div className="nm radiant">{radiantLabel}</div>
           <div className="tag">Radiant{cfg.firstPickSide === 'radiant' ? ' · first pick' : ''}</div>
+          {radiantCaptain && <div className="small" style={{ marginTop: 3, fontWeight: 600 }}>👑 {radiantCaptain}</div>}
+          {radiantPlayers && <div className="small mute" style={{ marginTop: 2 }}>{radiantPlayers}</div>}
         </div>
         <div className="dt-clock">
           {!done ? (
@@ -375,6 +427,8 @@ function Room({ room, setRoom, heroes, user, onExit }) {
         <div className={`dt-team right ${currentSide === 'dire' ? 'turn' : ''}`}>
           <div className="nm dire">{direLabel}</div>
           <div className="tag">Dire{cfg.firstPickSide === 'dire' ? ' · first pick' : ''}</div>
+          {direCaptain && <div className="small" style={{ marginTop: 3, fontWeight: 600 }}>👑 {direCaptain}</div>}
+          {direPlayers && <div className="small mute" style={{ marginTop: 2 }}>{direPlayers}</div>}
         </div>
       </div>
 
@@ -421,6 +475,34 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <span><b style={{ textTransform: 'capitalize' }}>{lastAction.side}</b> {lastAction.type === 'ban' ? 'banned' : 'picked'} <b>{lastActionHero.name}</b></span>
         </div>
       )}
+      <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+    </div>
+  )
+}
+
+function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId }) {
+  return (
+    <div className="card" style={{ marginTop: 12, padding: 12 }}>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>Room chat</div>
+      <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+        {chat.length === 0 && <div className="small mute">No messages yet. Say hi.</div>}
+        {chat.map(m => (
+          <div key={m.id} className="small" style={{ lineHeight: 1.4 }}>
+            <b style={{ color: m.sender_id === myId ? 'var(--gold)' : 'var(--radiant)' }}>{m.sender_name}</b>
+            <span className="mute num" style={{ marginLeft: 6, fontSize: 10 }}>
+              {new Date(m.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <div>{m.body}</div>
+          </div>
+        ))}
+        <div ref={chatEnd} />
+      </div>
+      <div className="row">
+        <input className="input grow" placeholder="Message the room…" value={chatText}
+          onChange={e => setChatText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') sendChat() }} maxLength={500} />
+        <button className="btn sm" onClick={sendChat} disabled={!chatText.trim()}>Send</button>
+      </div>
     </div>
   )
 }
