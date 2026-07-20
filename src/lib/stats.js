@@ -134,10 +134,12 @@ export function funFacts(matches, perfs, players) {
   let biggestBlowout = null
   for (const m of matches) {
     const tk = teamKills.get(m.id)
-    if (!tk) continue
-    const margin = Math.abs(tk.radiant - tk.dire)
+    const r = m.radiant_score ?? tk?.radiant
+    const d = m.dire_score ?? tk?.dire
+    if (r == null || d == null) continue
+    const margin = Math.abs(r - d)
     if (!biggestBlowout || margin > biggestBlowout.margin) {
-      biggestBlowout = { margin, radiant: tk.radiant, dire: tk.dire, winner: m.radiant_win ? 'Radiant' : 'Dire', played_at: m.played_at }
+      biggestBlowout = { margin, radiant: r, dire: d, winner: m.radiant_win ? 'Radiant' : 'Dire', played_at: m.played_at }
     }
   }
 
