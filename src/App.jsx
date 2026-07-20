@@ -43,6 +43,10 @@ export default function App() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('room')) setTab('draft')
+  }, [])
+
+  useEffect(() => {
     const saved = (() => { try { return localStorage.getItem('ad-theme') } catch { return null } })()
     const initial = saved || 'dark'
     setTheme(initial)
