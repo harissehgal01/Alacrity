@@ -99,6 +99,12 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const [search, setSearch] = useState('')
   const [nameDraft, setNameDraft] = useState({ team: '', players: '' })
   const [captains, setCaptains] = useState({}) // userId -> display_name
+  const [roster, setRoster] = useState([])
+
+  useEffect(() => {
+    supabase.from('players').select('id, name').order('name')
+      .then(({ data }) => setRoster(data || []))
+  }, [])
   const [chat, setChat] = useState([])
   const [chatText, setChatText] = useState('')
   const chatEnd = useRef(null)
@@ -167,12 +173,26 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const shareLink = `${window.location.origin}${window.location.pathname}?room=${room.code}`
   const teamMeta = cfg.teamMeta || {}
   const seatLabel = seat => teamMeta[seat]?.team?.trim() || `Captain ${seat === 'A' ? 1 : 2}`
-  const seatPlayers = seat => teamMeta[seat]?.players?.trim() || ''
+  const rosterName = id => roster.find(p => p.id === id)?.name
+  const seatPlayers = seat => {
+    const ids = teamMeta[seat]?.playerIds || []
+    const fromIds = ids.map(rosterName).filter(Boolean).join(', ')
+    return fromIds || teamMeta[seat]?.players?.trim() || ''
+  }
+
+  async function togglePlayer(pid) {
+    if (!mySeatAB) return
+    const cur = teamMeta[mySeatAB]?.playerIds || []
+    const next = cur.includes(pid) ? cur.filter(x => x !== pid) : [...cur, pid]
+    const meta = { ...teamMeta, [mySeatAB]: { ...(teamMeta[mySeatAB] || {}), playerIds: next } }
+    const { data } = await supabase.from('draft_rooms').update({ config: { ...cfg, teamMeta: meta } }).eq('id', room.id).select().single()
+    if (data) setRoom(data)
+  }
 
   async function saveNames() {
     if (!mySeatAB) return
-    const next = { ...cfg, teamMeta: { ...teamMeta, [mySeatAB]: { team: nameDraft.team, players: nameDraft.players } } }
-    const { data } = await supabase.from('draft_rooms').update({ config: next }).eq('id', room.id).select().single()
+    const meta = { ...teamMeta, [mySeatAB]: { ...(teamMeta[mySeatAB] || {}), team: nameDraft.team } }
+    const { data } = await supabase.from('draft_rooms').update({ config: { ...cfg, teamMeta: meta } }).eq('id', room.id).select().single()
     if (data) setRoom(data)
   }
 
@@ -314,12 +334,24 @@ function Room({ room, setRoom, heroes, user, onExit }) {
         </div>
         {mySeatAB && (
           <div className="card" style={{ background: 'var(--bg0)', margin: '10px 0' }}>
-            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>Optional — name your team and list your players. Shown instead of "Captain {mySeatAB === 'A' ? 1 : 2}".</p>
+            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>Optional — name your team, and tap crew members to add them to your side. Shown to everyone in the room.</p>
             <input className="input" style={{ marginBottom: 8 }} placeholder="Team name (optional)"
               defaultValue={teamMeta[mySeatAB]?.team || ''} onChange={e => setNameDraft(n => ({ ...n, team: e.target.value }))} />
-            <input className="input" style={{ marginBottom: 8 }} placeholder="Players (optional, e.g. Haris, Ahmed)"
-              defaultValue={teamMeta[mySeatAB]?.players || ''} onChange={e => setNameDraft(n => ({ ...n, players: e.target.value }))} />
-            <button className="btn sm" onClick={saveNames}>Save names</button>
+            <div className="row" style={{ flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {roster.map(p => {
+                const mine = (teamMeta[mySeatAB]?.playerIds || []).includes(p.id)
+                const otherSeat = mySeatAB === 'A' ? 'B' : 'A'
+                const theirs = (teamMeta[otherSeat]?.playerIds || []).includes(p.id)
+                return (
+                  <button key={p.id} className={`btn sm ${mine ? '' : 'ghost'}`} disabled={theirs}
+                    style={theirs ? { opacity: 0.35 } : {}}
+                    onClick={() => togglePlayer(p.id)}>
+                    {p.name}
+                  </button>
+                )
+              })}
+            </div>
+            <button className="btn sm" onClick={saveNames}>Save team name</button>
           </div>
         )}
         {mySeatAB && (
@@ -417,7 +449,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <div className="nm radiant">{radiantLabel}</div>
           <div className="tag">Radiant{cfg.firstPickSide === 'radiant' ? ' · first pick' : ''}</div>
           {radiantCaptain && <div className="small" style={{ marginTop: 3, fontWeight: 600 }}>👑 {radiantCaptain}</div>}
-          {radiantPlayers && <div className="small mute" style={{ marginTop: 2 }}>{radiantPlayers}</div>}
+          {radiantPlayers && <div className="small" style={{ marginTop: 3, fontWeight: 600, lineHeight: 1.4 }}>{radiantPlayers}</div>}
         </div>
         <div className="dt-clock">
           {!done ? (
@@ -437,7 +469,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <div className="nm dire">{direLabel}</div>
           <div className="tag">Dire{cfg.firstPickSide === 'dire' ? ' · first pick' : ''}</div>
           {direCaptain && <div className="small" style={{ marginTop: 3, fontWeight: 600 }}>👑 {direCaptain}</div>}
-          {direPlayers && <div className="small mute" style={{ marginTop: 2 }}>{direPlayers}</div>}
+          {direPlayers && <div className="small" style={{ marginTop: 3, fontWeight: 600, lineHeight: 1.4 }}>{direPlayers}</div>}
         </div>
       </div>
 
