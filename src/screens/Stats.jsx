@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchHeroes } from '../lib/opendota'
-import { aggregate, heroStats, banStats, funFacts, fmt } from '../lib/stats'
+import { aggregate, heroStats, banStats, funFacts, fmt, impactStats, filterBySeason, versusRecord, togetherRecord } from '../lib/stats'
+import { GodAvatar } from '../lib/gods'
 
 const CATEGORIES = [
   { group: 'Per-game records', options: [
@@ -37,22 +38,32 @@ const CATEGORIES = [
   ]},
 ]
 const ALL_OPTIONS = CATEGORIES.flatMap(g => g.options)
-const VIEWS = [['players', 'Players'], ['heroes', 'Heroes'], ['facts', 'Fun facts']]
+const VIEWS = [['players', 'Players'], ['heroes', 'Heroes'], ['rivalries', 'Rivalries'], ['facts', 'Fun facts']]
 
-export default function Stats({ players, perfs, matches, openProfile }) {
+export default function Stats({ players, perfs: allPerfs, matches: allMatches, openProfile }) {
   const [view, setView] = useState('players')
   const [statKey, setStatKey] = useState('maxKills')
   const [heroSort, setHeroSort] = useState('games')
   const [heroes, setHeroes] = useState([])
   const [draftRooms, setDraftRooms] = useState([])
+  const [seasons, setSeasons] = useState([])
+  const [seasonId, setSeasonId] = useState('all')
+  const [rivalA, setRivalA] = useState([])
+  const [rivalB, setRivalB] = useState([])
 
   useEffect(() => { fetchHeroes().then(setHeroes).catch(() => {}) }, [])
   useEffect(() => {
     supabase.from('draft_rooms').select('actions').eq('status', 'completed')
       .then(({ data }) => setDraftRooms(data || []))
+    supabase.from('seasons').select('*').order('starts_at')
+      .then(({ data }) => setSeasons(data || []))
   }, [])
 
+  const season = seasons.find(s => s.id === seasonId) || null
+  const { matches, perfs } = useMemo(() => filterBySeason(allMatches, allPerfs, season), [allMatches, allPerfs, season])
+
   const stats = useMemo(() => aggregate(perfs), [perfs])
+  const impact = useMemo(() => impactStats(perfs), [perfs])
   const active = ALL_OPTIONS.find(o => o.key === statKey)
 
   const rows = useMemo(() => {
@@ -76,8 +87,15 @@ export default function Stats({ players, perfs, matches, openProfile }) {
     <div className="card">
       <h2>Stats</h2>
       <p className="small mute" style={{ marginTop: 0 }}>Every crew stat, ranked.</p>
-      <div className="seg" style={{ marginBottom: 16 }}>
+      <div className="seg" style={{ marginBottom: 10 }}>
         {VIEWS.map(([id, label]) => <button key={id} className={view === id ? 'on' : ''} onClick={() => setView(id)}>{label}</button>)}
+      </div>
+      <div className="row" style={{ marginBottom: 16, alignItems: 'center' }}>
+        <div className="eyebrow grow">Season</div>
+        <select className="input" style={{ width: 'auto' }} value={seasonId} onChange={e => setSeasonId(e.target.value)}>
+          <option value="all">All time</option>
+          {seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
       </div>
 
       {view === 'players' && (
@@ -136,8 +154,62 @@ export default function Stats({ players, perfs, matches, openProfile }) {
         </>
       )}
 
+      {view === 'rivalries' && (() => {
+        const toggle = (list, setList, id) => setList(list.includes(id) ? list.filter(x => x !== id) : [...list, id].slice(-2))
+        const nameOfId = id => players.find(p => p.id === id)?.name || '?'
+        const vs = rivalA.length && rivalB.length ? versusRecord(matches, perfs, rivalA, rivalB) : null
+        const togA = rivalA.length >= 2 ? togetherRecord(matches, perfs, rivalA) : null
+        const togB = rivalB.length >= 2 ? togetherRecord(matches, perfs, rivalB) : null
+        const chip = (list, setList) => (
+          <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+            {players.map(p => (
+              <button key={p.id} className={`btn sm ${list.includes(p.id) ? '' : 'ghost'}`} onClick={() => toggle(list, setList, p.id)}>{p.name}</button>
+            ))}
+          </div>
+        )
+        return (
+          <>
+            <p className="small mute" style={{ marginTop: 0 }}>Pick 1–2 players per side. Records count only games where everyone selected actually played, sides fully split.</p>
+            <div className="eyebrow" style={{ margin: '10px 0 6px' }}>Side A</div>
+            {chip(rivalA, setRivalA)}
+            <div className="eyebrow" style={{ margin: '14px 0 6px' }}>Side B</div>
+            {chip(rivalB, setRivalB)}
+            {vs && (
+              <div className="card" style={{ background: 'var(--bg0)', marginTop: 16, textAlign: 'center' }}>
+                <div className="eyebrow">{rivalA.map(nameOfId).join(' + ')} vs {rivalB.map(nameOfId).join(' + ')}</div>
+                {vs.games === 0
+                  ? <p className="mute small">No games with these exact sides yet.</p>
+                  : <div className="num" style={{ fontSize: 28, fontWeight: 700, margin: '8px 0' }}>{vs.winsA} <span className="mute" style={{ fontSize: 16 }}>–</span> {vs.winsB}
+                      <div className="small mute" style={{ fontWeight: 400 }}>{vs.games} games · {Math.round(100 * vs.winsA / vs.games)}% for side A</div>
+                    </div>}
+              </div>
+            )}
+            {togA && togA.games > 0 && <p className="small mute" style={{ marginTop: 10 }}>Together, {rivalA.map(nameOfId).join(' + ')}: {togA.wins}W–{togA.losses}L in {togA.games} games.</p>}
+            {togB && togB.games > 0 && <p className="small mute">Together, {rivalB.map(nameOfId).join(' + ')}: {togB.wins}W–{togB.losses}L in {togB.games} games.</p>}
+          </>
+        )
+      })()}
+
       {view === 'facts' && (
         <div className="stat-grid">
+          {impact.mvpLeaders.length > 0 && (
+            <div className="stat" style={{ gridColumn: '1 / -1' }}>
+              <div className="k">MVP leaders <span className="formula">weighted score vs the other 9 in each game</span></div>
+              <div className="who" style={{ marginTop: 6, lineHeight: 2 }}>
+                {impact.mvpLeaders.slice(0, 6).map(r => {
+                  const p = players.find(x => x.id === r.player_id)
+                  return p ? <span key={r.player_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 14 }}><GodAvatar name={p.name} size={20} /> {p.name} 👑×{r.mvps}</span> : null
+                })}
+              </div>
+            </div>
+          )}
+          {impact.mostImpactful.length > 0 && (
+            <div className="stat" style={{ gridColumn: '1 / -1' }}>
+              <div className="k">Most impactful overall <span className="formula">avg MVP-score, min 5 games</span></div>
+              <div className="v num">{(() => { const t = impact.mostImpactful[0]; const p = players.find(x => x.id === t.player_id); return p ? `${p.name} · ${(t.avgImpact * 100).toFixed(0)} impact` : '—' })()}</div>
+              <div className="who">{impact.mostImpactful.slice(1, 4).map(r => { const p = players.find(x => x.id === r.player_id); return p ? `${p.name} ${(r.avgImpact * 100).toFixed(0)}` : '' }).filter(Boolean).join(' · ')}</div>
+            </div>
+          )}
           <div className="stat"><div className="k">Total games</div><div className="v num">{facts.totalGames}</div></div>
           <div className="stat"><div className="k">Total hours tracked</div><div className="v num">{facts.gamesWithDuration ? fmt.d1(facts.totalHours) : '—'}</div></div>
           {facts.biggestBlowout && (
