@@ -17,10 +17,17 @@ export async function createRoom(userId) {
 }
 
 export async function findRoom(code) {
-  const { data, error } = await supabase.from('draft_rooms').select('*')
-    .eq('code', code.trim().toUpperCase()).maybeSingle()
-  if (error) throw error
-  return data
+  const c = code.trim().toUpperCase()
+  // Prefer a live room (lobby/drafting) with this code; fall back to the latest completed one.
+  const { data: live, error: e1 } = await supabase.from('draft_rooms').select('*')
+    .eq('code', c).neq('status', 'completed')
+    .order('created_at', { ascending: false }).limit(1)
+  if (e1) throw e1
+  if (live && live.length) return live[0]
+  const { data: past, error: e2 } = await supabase.from('draft_rooms').select('*')
+    .eq('code', c).order('created_at', { ascending: false }).limit(1)
+  if (e2) throw e2
+  return past?.[0] || null
 }
 
 // seat is 'A' or 'B' — generic captain slots, claimed BEFORE the toss.

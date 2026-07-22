@@ -170,3 +170,139 @@ export const fmt = {
   d1: v => v == null ? '—' : (Math.round(v * 10) / 10).toFixed(1),
   dur: s => s == null ? '—' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`,
 }
+
+// ── MVP engine ──────────────────────────────────────────────────────────
+// Score each performance relative to the other 9 players in the same match.
+// Weighted blend of normalized shares so cores and supports both can win:
+// KDA 30%, hero damage 20%, net worth 15%, building damage 10%,
+// assists 10%, support contribution (wards+dewards+stacks+support gold) 15%.
+// Winners get a 1.15x multiplier.
+function mvpScoreRows(rows) {
+  const max = f => Math.max(1, ...rows.map(f))
+  const mk = max(p => (p.kills + p.assists) / Math.max(1, p.deaths))
+  const mhd = max(p => p.hero_damage || 0)
+  const mnw = max(p => p.net_worth || 0)
+  const mtd = max(p => p.tower_damage || 0)
+  const ma = max(p => p.assists || 0)
+  const sup = p => (p.obs_placed || 0) * 30 + (p.sen_placed || 0) * 20 + (p.dewards || 0) * 40 + (p.camps_stacked || 0) * 30 + (p.support_gold_spent || 0) / 10
+  const msup = max(sup)
+  return rows.map(p => {
+    const kda = (p.kills + p.assists) / Math.max(1, p.deaths)
+    let score =
+      0.30 * (kda / mk) +
+      0.20 * ((p.hero_damage || 0) / mhd) +
+      0.15 * ((p.net_worth || 0) / mnw) +
+      0.10 * ((p.tower_damage || 0) / mtd) +
+      0.10 * ((p.assists || 0) / ma) +
+      0.15 * (sup(p) / msup)
+    if (p.won) score *= 1.15
+    return { perf: p, score }
+  })
+}
+
+// Map of match_id -> { player_id, hero_name, score } for the MVP of each match.
+export function mvpByMatch(perfs) {
+  const byMatch = new Map()
+  for (const p of perfs) {
+    if (!byMatch.has(p.match_id)) byMatch.set(p.match_id, [])
+    byMatch.get(p.match_id).push(p)
+  }
+  const out = new Map()
+  for (const [mid, rows] of byMatch) {
+    if (rows.length < 4) continue
+    const scored = mvpScoreRows(rows).sort((a, b) => b.score - a.score)
+    const top = scored[0]
+    out.set(mid, { player_id: top.perf.player_id, hero_name: top.perf.hero_name, score: top.score })
+  }
+  return out
+}
+
+// Most Impactful = highest average MVP-score across all games (min 5 games),
+// plus MVP counts for everyone.
+export function impactStats(perfs, minGames = 5) {
+  const byMatch = new Map()
+  for (const p of perfs) {
+    if (!byMatch.has(p.match_id)) byMatch.set(p.match_id, [])
+    byMatch.get(p.match_id).push(p)
+  }
+  const totals = new Map() // player_id -> { sum, games, mvps }
+  for (const rows of byMatch.values()) {
+    if (rows.length < 4) continue
+    const scored = mvpScoreRows(rows)
+    const top = scored.reduce((a, b) => (b.score > a.score ? b : a))
+    for (const { perf, score } of scored) {
+      if (!perf.player_id) continue
+      if (!totals.has(perf.player_id)) totals.set(perf.player_id, { sum: 0, games: 0, mvps: 0 })
+      const t = totals.get(perf.player_id)
+      t.sum += score; t.games += 1
+      if (perf === top.perf) t.mvps += 1
+    }
+  }
+  const rows = [...totals.entries()].map(([player_id, t]) => ({
+    player_id, games: t.games, mvps: t.mvps, avgImpact: t.sum / t.games,
+  }))
+  return {
+    mvpLeaders: rows.filter(r => r.mvps > 0).sort((a, b) => b.mvps - a.mvps),
+    mostImpactful: rows.filter(r => r.games >= minGames).sort((a, b) => b.avgImpact - a.avgImpact),
+  }
+}
+
+// ── Seasons ─────────────────────────────────────────────────────────────
+export function filterBySeason(matches, perfs, season) {
+  if (!season) return { matches, perfs }
+  const s = new Date(season.starts_at).getTime()
+  const e = new Date(season.ends_at).getTime()
+  const keep = new Set(matches.filter(m => {
+    const t = new Date(m.played_at).getTime()
+    return t >= s && t <= e
+  }).map(m => m.id))
+  return { matches: matches.filter(m => keep.has(m.id)), perfs: perfs.filter(p => keep.has(p.match_id)) }
+}
+
+// ── Rivalries: with/against records between players ─────────────────────
+// sideA and sideB are arrays of player_ids. Returns games/wins when all of
+// sideA were on one team and all of sideB on the other.
+export function versusRecord(matches, perfs, sideA, sideB) {
+  const byMatch = new Map()
+  for (const p of perfs) {
+    if (!p.player_id) continue
+    if (!byMatch.has(p.match_id)) byMatch.set(p.match_id, [])
+    byMatch.get(p.match_id).push(p)
+  }
+  let games = 0, winsA = 0
+  for (const m of matches) {
+    const rows = byMatch.get(m.id) || []
+    const team = id => rows.find(r => r.player_id === id)?.team
+    const teamsA = sideA.map(team), teamsB = sideB.map(team)
+    if (teamsA.some(t => !t) || teamsB.some(t => !t)) continue
+    const tA = teamsA[0]
+    if (!teamsA.every(t => t === tA)) continue
+    const tB = teamsB[0]
+    if (!teamsB.every(t => t === tB) || tB === tA) continue
+    games += 1
+    const radiantWon = m.radiant_win
+    if ((tA === 'radiant') === radiantWon) winsA += 1
+  }
+  return { games, winsA, winsB: games - winsA }
+}
+
+// Together record: all listed players on the same team.
+export function togetherRecord(matches, perfs, ids) {
+  const byMatch = new Map()
+  for (const p of perfs) {
+    if (!p.player_id) continue
+    if (!byMatch.has(p.match_id)) byMatch.set(p.match_id, [])
+    byMatch.get(p.match_id).push(p)
+  }
+  let games = 0, wins = 0
+  for (const m of matches) {
+    const rows = byMatch.get(m.id) || []
+    const team = id => rows.find(r => r.player_id === id)?.team
+    const teams = ids.map(team)
+    if (teams.some(t => !t)) continue
+    if (!teams.every(t => t === teams[0])) continue
+    games += 1
+    if ((teams[0] === 'radiant') === m.radiant_win) wins += 1
+  }
+  return { games, wins, losses: games - wins }
+}
