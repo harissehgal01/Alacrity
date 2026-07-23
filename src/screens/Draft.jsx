@@ -81,7 +81,7 @@ export default function Draft() {
             <button className="btn ghost" onClick={doJoin} disabled={!joinCode.trim()}>Join</button>
           </div>
           {msg && <div className={`notice ${msg.err ? 'err' : ''}`} style={{ marginTop: 10 }}>{msg.text}</div>}
-          <button className="btn ghost sm" style={{ width: '100%', marginTop: 12 }} onClick={() => doCreate('draft')}>Skip to hero draft (teams already set)</button>
+          <button className="btn ghost sm" style={{ width: '100%', marginTop: 12 }} onClick={() => doCreate('draft')}>Create a draft room</button>
         </div>
         {past.length > 0 && (
           <div className="card">
@@ -489,7 +489,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
         </div>
         {mySeatAB && (
           <div className="card" style={{ background: 'var(--bg0)', margin: '10px 0' }}>
-            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>Optional — name your team. Players get picked in the team draft next.</p>
+            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>Optional — name your team.</p>
             <input className="input" style={{ marginBottom: 8 }} placeholder="Team name (optional)"
               defaultValue={teamMeta[mySeatAB]?.team || ''} onChange={e => setNameDraft(n => ({ ...n, team: e.target.value }))} />
             <button className="btn sm" onClick={saveNames}>Save team name</button>
@@ -622,12 +622,34 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {mySeatAB && (
+          <div className="card" style={{ background: 'var(--bg0)', margin: '10px 0' }}>
+            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>
+              Pick your side — tap crew members to add them. Anyone the other captain has taken is locked.
+            </p>
+            <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+              {roster.filter(p => !captainPlayerIdSet.has(p.id)).map(p => {
+                const otherSeat = mySeatAB === 'A' ? 'B' : 'A'
+                const mine = (teamMeta[mySeatAB]?.playerIds || []).includes(p.id)
+                const theirs = (teamMeta[otherSeat]?.playerIds || []).includes(p.id)
+                return (
+                  <button key={p.id} className={`btn sm ${mine ? '' : 'ghost'}`} disabled={theirs}
+                    style={{ opacity: theirs ? 0.3 : 1, display: 'flex', alignItems: 'center', gap: 6 }}
+                    onClick={() => togglePlayer(p.id)}>
+                    <GodAvatar player={p} size={18} />{p.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        {mySeatAB && (
           <div className="toss-wrap" style={{ paddingTop: 6 }}>
             <div className={`coin ${spinning ? 'spin' : ''}`}>{spinning ? '' : 'Toss'}</div>
-            <button className="btn" onClick={startTeamDraft} disabled={!bothSeated || spinning}>
-              {!bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip for first pick'}
+            <button className="btn" onClick={startToss} disabled={!bothSeated || spinning || heroes.length === 0}>
+              {heroes.length === 0 ? 'Loading heroes…' : !bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip coin & start hero draft'}
             </button>
-            <p className="small mute" style={{ marginTop: 8 }}>…or draft players manually.</p>
+            <p className="small mute" style={{ marginTop: 10, marginBottom: 4 }}>Rather draft players one at a time?</p>
+            <button className="btn sm ghost" onClick={startTeamDraft} disabled={!bothSeated || spinning}>Run an alternating player draft</button>
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — waiting for both captains…</div>}
