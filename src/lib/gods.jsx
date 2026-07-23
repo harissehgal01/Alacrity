@@ -118,16 +118,16 @@ export function GodAvatar({ player, size = 34, showName = false }) {
   )
 }
 
-// Profile background themes — subtle gradients.
+// Profile background themes — subtle gradients, plus an accent the charts follow.
 export const THEMES = [
-  { key: null, name: 'None', bg: 'transparent' },
-  { key: 'indigo', name: 'Indigo', bg: 'radial-gradient(ellipse at top, rgba(99,102,241,0.22), transparent 65%)' },
-  { key: 'navy', name: 'Navy Blue', bg: 'radial-gradient(ellipse at top, rgba(30,58,138,0.35), transparent 65%)' },
-  { key: 'neonpink', name: 'Neon Pink', bg: 'radial-gradient(ellipse at top, rgba(236,72,153,0.20), transparent 65%)' },
-  { key: 'emerald', name: 'Emerald', bg: 'radial-gradient(ellipse at top, rgba(16,185,129,0.20), transparent 65%)' },
-  { key: 'crimson', name: 'Crimson', bg: 'radial-gradient(ellipse at top, rgba(220,38,38,0.22), transparent 65%)' },
-  { key: 'gold', name: 'Gold', bg: 'radial-gradient(ellipse at top, rgba(245,158,11,0.20), transparent 65%)' },
-  { key: 'violet', name: 'Violet', bg: 'radial-gradient(ellipse at top, rgba(139,92,246,0.22), transparent 65%)' },
+  { key: null, name: 'None', bg: 'transparent', accent: '#f0b429' },
+  { key: 'indigo', name: 'Indigo', bg: 'radial-gradient(ellipse at top, rgba(99,102,241,0.22), transparent 65%)', accent: '#818cf8' },
+  { key: 'navy', name: 'Navy Blue', bg: 'radial-gradient(ellipse at top, rgba(30,58,138,0.35), transparent 65%)', accent: '#60a5fa' },
+  { key: 'neonpink', name: 'Neon Pink', bg: 'radial-gradient(ellipse at top, rgba(236,72,153,0.20), transparent 65%)', accent: '#f472b6' },
+  { key: 'emerald', name: 'Emerald', bg: 'radial-gradient(ellipse at top, rgba(16,185,129,0.20), transparent 65%)', accent: '#34d399' },
+  { key: 'crimson', name: 'Crimson', bg: 'radial-gradient(ellipse at top, rgba(220,38,38,0.22), transparent 65%)', accent: '#f87171' },
+  { key: 'gold', name: 'Gold', bg: 'radial-gradient(ellipse at top, rgba(245,158,11,0.20), transparent 65%)', accent: '#fbbf24' },
+  { key: 'violet', name: 'Violet', bg: 'radial-gradient(ellipse at top, rgba(139,92,246,0.22), transparent 65%)', accent: '#a78bfa' },
 ]
 export function themeOf(player) {
   return THEMES.find(t => t.key === player?.theme_key) || THEMES[0]
