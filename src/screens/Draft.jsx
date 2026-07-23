@@ -4,7 +4,8 @@ import { useAuth } from '../lib/auth'
 import { fetchHeroes } from '../lib/opendota'
 import { SEQUENCE, turnSeconds, phaseLabel } from '../lib/draftSequence'
 import { createRoom, findRoom, claimSeat } from '../lib/room'
-import { playerProfiles, suggestSplits, winShare } from '../lib/balance'
+import { playerProfiles, suggestSplits, winShare, roleShort } from '../lib/balance'
+import { GodAvatar } from '../lib/gods'
 
 const ATTRS = [['str', 'Strength'], ['agi', 'Agility'], ['int', 'Intelligence'], ['all', 'Universal']]
 
@@ -462,8 +463,8 @@ function Room({ room, setRoom, heroes, user, onExit }) {
         {mySeatAB && (
           <div className="toss-wrap" style={{ paddingTop: 6 }}>
             <div className={`coin ${spinning ? 'spin' : ''}`}>{spinning ? '' : 'Toss'}</div>
-            <button className="btn" onClick={startTeamDraft} disabled={!bothSeated || spinning || heroes.length === 0}>
-              {heroes.length === 0 ? 'Loading heroes…' : !bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip for first pick & draft teams'}
+            <button className="btn" onClick={startToss} disabled={!bothSeated || spinning || heroes.length === 0}>
+              {heroes.length === 0 ? 'Loading heroes…' : !bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip coin & start hero draft'}
             </button>
           </div>
         )}
@@ -527,7 +528,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
                   {profiles.filter(p => !captainPlayerIdSet.has(p.id)).map(p => (
                     <button key={p.id} className={`btn sm ${poolIds.includes(p.id) ? '' : 'ghost'}`}
                       onClick={() => { setSplits(null); setPoolIds(ids => ids.includes(p.id) ? ids.filter(x => x !== p.id) : [...ids, p.id]) }}>
-                      {p.name}<span className="mute" style={{ marginLeft: 5, fontSize: 10 }}>{p.role === 'support' ? 'SUP' : p.role === 'core' ? 'CORE' : 'FLEX'}</span>
+                      {p.name}{p.pos && <span className="mute" style={{ marginLeft: 5, fontSize: 10 }}>{roleShort(p.pos)}</span>}
                     </button>
                   ))}
                 </div>
@@ -541,11 +542,19 @@ function Room({ room, setRoom, heroes, user, onExit }) {
                       <div className="eyebrow grow">Option {i + 1}</div>
                       <div className="small num mute">{Math.round(winShare(sp) * 100)}% / {100 - Math.round(winShare(sp) * 100)}%</div>
                     </div>
-                    <div className="draft-head" style={{ marginBottom: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
                       {['a', 'b'].map(k => (
-                        <div key={k} className="side">
-                          <div className="nm">{seatLabel(k === 'a' ? 'A' : 'B')}</div>
-                          <div className="small" style={{ lineHeight: 1.6 }}>{sp[k].map(p => <div key={p.id}>{p.name}</div>)}</div>
+                        <div key={k}>
+                          <div className="eyebrow" style={{ marginBottom: 6 }}>{seatLabel(k === 'a' ? 'A' : 'B')}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {sp[k].map(p => (
+                              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <GodAvatar player={p} size={20} />
+                                <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                                {p.pos && <span className="mute" style={{ fontSize: 10, marginLeft: 'auto' }}>{roleShort(p.pos)}</span>}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -624,18 +633,39 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           {seatLabel(cfg.teamFirst || 'A')} won the flip and picks first. Order: 1 · 2 · 2 · 2 · 1.
         </p>
 
-        <div className="draft-head" style={{ marginBottom: 12 }}>
-          {['A', 'B'].map(seat => (
-            <div key={seat} className="side" style={{ opacity: turnSeat && turnSeat !== seat ? 0.55 : 1 }}>
-              <div className="nm">{seatLabel(seat)}</div>
-              {captains[seat === 'A' ? room.radiant_seat : room.dire_seat] && (
-                <div className="small" style={{ fontWeight: 600 }}>👑 {captains[seat === 'A' ? room.radiant_seat : room.dire_seat]}</div>
-              )}
-              <div className="small" style={{ marginTop: 4, lineHeight: 1.6 }}>
-                {teamOf(seat).length ? teamOf(seat).map(n => <div key={n}>{n}</div>) : <span className="mute">No picks yet</span>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+          {['A', 'B'].map(seat => {
+            const capId = captainPlayerOf(seat)
+            const capP = capId ? roster.find(r => r.id === capId) : null
+            const mates = picks.filter(p => p.seat === seat).map(p => roster.find(r => r.id === p.player_id)).filter(Boolean)
+            const slots = [...(capP ? [{ p: capP, cap: true }] : []), ...mates.map(p => ({ p, cap: false }))]
+            const isTurn = turnSeat === seat
+            return (
+              <div key={seat} style={{
+                background: 'var(--bg0)', borderRadius: 12, padding: 12,
+                border: `1px solid ${isTurn ? 'var(--gold)' : 'var(--line)'}`,
+                boxShadow: isTurn ? '0 0 0 3px rgba(240,180,41,.12)' : 'none',
+                transition: 'border-color .2s',
+              }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{seatLabel(seat)}</div>
+                <div className="small mute" style={{ marginBottom: 10 }}>{slots.length}/5</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {Array.from({ length: 5 }).map((_, i) => {
+                    const s = slots[i]
+                    if (!s) return <div key={i} style={{ height: 30, borderRadius: 8, border: '1px dashed var(--line)', opacity: .5 }} />
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30 }}>
+                        <GodAvatar player={s.p} size={22} />
+                        <span style={{ fontSize: 13, fontWeight: s.cap ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.p.name}</span>
+                        {s.cap && <span className="tag" style={{ fontSize: 9, padding: '1px 5px' }}>C</span>}
+                        {s.p.role_pos && <span className="mute" style={{ fontSize: 10, marginLeft: 'auto' }}>{roleShort(s.p.role_pos)}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="phase-banner">

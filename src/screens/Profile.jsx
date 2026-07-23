@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { aggregate, fmt, impactStats, filterBySeason } from '../lib/stats'
 import { fetchHeroes } from '../lib/opendota'
 import { GodAvatar, godOf, GodPicker, ThemePicker, themeOf } from '../lib/gods'
+import { ROLES, roleLabel } from '../lib/balance'
 
 // Match Ribbon — interactive area chart over recent games.
 // Dots are win/loss colored; hover/tap shows a tooltip with hero + numbers.
@@ -74,6 +75,7 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
   const [pickingTheme, setPickingTheme] = useState(false)
   const [localPlayer, setLocalPlayer] = useState(player)
   const [seasonId, setSeasonId] = useState('all')
+  const [rolePos, setRolePos] = useState(player.role_pos || null)
   const [heroes, setHeroes] = useState([])
   useEffect(() => { fetchHeroes().then(setHeroes).catch(() => {}) }, [])
   const imgByHero = useMemo(() => new Map(heroes.map(h => [h.name, h.img])), [heroes])
@@ -116,6 +118,13 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
     await supabase.from('players').update(patch).eq('id', player.id)
     reload && reload()
   }
+  async function saveRole(pos) {
+    setRolePos(pos)
+    setLocalPlayer(lp => ({ ...lp, role_pos: pos }))
+    await supabase.from('players').update({ role_pos: pos }).eq('id', player.id)
+    reload && reload()
+  }
+
   async function saveTheme(key) {
     setLocalPlayer(lp => ({ ...lp, theme_key: key }))
     setPickingTheme(false)
@@ -174,6 +183,15 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
           <GodPicker player={localPlayer} allPlayers={players} heroes={heroes} onPick={saveAvatar} />
         </div>
       )}
+      <div className="row" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 14 }}>
+        <span className="eyebrow" style={{ marginRight: 2 }}>Role</span>
+        {Object.entries(ROLES).map(([pos, r]) => (
+          <button key={pos} className={`btn sm ${String(rolePos) === pos ? '' : 'ghost'}`} onClick={() => saveRole(Number(pos))}>
+            {r.short} <span className="mute" style={{ fontSize: 10 }}>{r.name}</span>
+          </button>
+        ))}
+      </div>
+
       {pickingTheme && (
         <div className="card" style={{ background: 'var(--bg0)', marginBottom: 14 }}>
           <ThemePicker player={localPlayer} onPick={saveTheme} />
