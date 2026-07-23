@@ -9,6 +9,10 @@ const ATTRS = [['str', 'Strength'], ['agi', 'Agility'], ['int', 'Intelligence'],
 
 const nameOf = user => user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Guest'
 
+// Player-draft order: first-picking captain takes 1, then 2-2-2, then the last one.
+// A·BB·AA·BB·A = 8 picks, four each, five a side counting the captains.
+const TEAM_SEQUENCE = ['A', 'B', 'B', 'A', 'A', 'B', 'B', 'A']
+
 export default function Draft() {
   const { user } = useAuth()
   const [heroes, setHeroes] = useState([])
@@ -174,6 +178,13 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const teamMeta = cfg.teamMeta || {}
   const seatLabel = seat => teamMeta[seat]?.team?.trim() || `Captain ${seat === 'A' ? 1 : 2}`
   const rosterName = id => roster.find(p => p.id === id)?.name
+  // Which seat picks at index i, given who won the flip to pick first.
+  const teamTurnSeat = i => {
+    const slot = TEAM_SEQUENCE[i]
+    if (!slot) return null
+    const first = cfg.teamFirst || 'A'
+    return first === 'A' ? slot : (slot === 'A' ? 'B' : 'A')
+  }
   const seatPlayers = seat => {
     const ids = teamMeta[seat]?.playerIds || []
     const fromIds = ids.map(rosterName).filter(Boolean).join(', ')
@@ -198,6 +209,51 @@ function Room({ room, setRoom, heroes, user, onExit }) {
 
   async function claim(seat) {
     try { setRoom(await claimSeat(room, seat, user.id)) } catch { /* taken */ }
+  }
+
+  // ── Team draft ──────────────────────────────────────────────
+  // Flip for who picks players first, then run A·BB·AA·BB·A.
+  async function startTeamDraft() {
+    if (!room.radiant_seat || !room.dire_seat) return
+    setSpinning(true)
+    const firstAB = Math.random() < 0.5 ? 'A' : 'B'
+    setTimeout(async () => {
+      const { data } = await supabase.from('draft_rooms').update({
+        config: { ...cfg, stage: 'team_draft', teamFirst: firstAB, teamPicks: [] },
+      }).eq('id', room.id).select().single()
+      if (data) setRoom(data)
+      setSpinning(false)
+    }, 900)
+  }
+
+  async function pickTeamPlayer(pid) {
+    const picks = cfg.teamPicks || []
+    if (picks.length >= TEAM_SEQUENCE.length) return
+    const turnSeat = teamTurnSeat(picks.length)
+    if (turnSeat !== mySeatAB) return
+    if (picks.some(p => p.player_id === pid)) return
+    const next = [...picks, { seat: turnSeat, player_id: pid }]
+    // Mirror into teamMeta so the rest of the app keeps working unchanged.
+    const meta = { ...teamMeta }
+    for (const seat of ['A', 'B']) {
+      meta[seat] = { ...(meta[seat] || {}), playerIds: next.filter(p => p.seat === seat).map(p => p.player_id) }
+    }
+    const { data } = await supabase.from('draft_rooms')
+      .update({ config: { ...cfg, teamPicks: next, teamMeta: meta } }).eq('id', room.id).select().single()
+    if (data) setRoom(data)
+  }
+
+  async function undoTeamPick() {
+    const picks = cfg.teamPicks || []
+    if (!picks.length || !mySeatAB) return
+    const next = picks.slice(0, -1)
+    const meta = { ...teamMeta }
+    for (const seat of ['A', 'B']) {
+      meta[seat] = { ...(meta[seat] || {}), playerIds: next.filter(p => p.seat === seat).map(p => p.player_id) }
+    }
+    const { data } = await supabase.from('draft_rooms')
+      .update({ config: { ...cfg, teamPicks: next, teamMeta: meta } }).eq('id', room.id).select().single()
+    if (data) setRoom(data)
   }
 
   async function startToss() {
@@ -334,31 +390,17 @@ function Room({ room, setRoom, heroes, user, onExit }) {
         </div>
         {mySeatAB && (
           <div className="card" style={{ background: 'var(--bg0)', margin: '10px 0' }}>
-            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>Optional — name your team, and tap crew members to add them to your side. Shown to everyone in the room.</p>
+            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>Optional — name your team. Players get picked in the team draft next.</p>
             <input className="input" style={{ marginBottom: 8 }} placeholder="Team name (optional)"
               defaultValue={teamMeta[mySeatAB]?.team || ''} onChange={e => setNameDraft(n => ({ ...n, team: e.target.value }))} />
-            <div className="row" style={{ flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {roster.map(p => {
-                const mine = (teamMeta[mySeatAB]?.playerIds || []).includes(p.id)
-                const otherSeat = mySeatAB === 'A' ? 'B' : 'A'
-                const theirs = (teamMeta[otherSeat]?.playerIds || []).includes(p.id)
-                return (
-                  <button key={p.id} className={`btn sm ${mine ? '' : 'ghost'}`} disabled={theirs}
-                    style={theirs ? { opacity: 0.35 } : {}}
-                    onClick={() => togglePlayer(p.id)}>
-                    {p.name}
-                  </button>
-                )
-              })}
-            </div>
             <button className="btn sm" onClick={saveNames}>Save team name</button>
           </div>
         )}
         {mySeatAB && (
           <div className="toss-wrap" style={{ paddingTop: 6 }}>
             <div className={`coin ${spinning ? 'spin' : ''}`}>{spinning ? '' : 'Toss'}</div>
-            <button className="btn" onClick={startToss} disabled={!bothSeated || spinning || heroes.length === 0}>
-              {heroes.length === 0 ? 'Loading heroes…' : !bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip coin & begin'}
+            <button className="btn" onClick={startTeamDraft} disabled={!bothSeated || spinning || heroes.length === 0}>
+              {heroes.length === 0 ? 'Loading heroes…' : !bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip for first pick & draft teams'}
             </button>
           </div>
         )}
@@ -369,6 +411,85 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   }
 
   /* ── TOSS CHOICES ── */
+  /* ── TEAM DRAFT ── */
+  if (stage === 'team_draft') {
+    const picks = cfg.teamPicks || []
+    const totalPicks = TEAM_SEQUENCE.length
+    const doneDrafting = picks.length >= totalPicks
+    const turnSeat = doneDrafting ? null : teamTurnSeat(picks.length)
+    const myTurn = turnSeat && turnSeat === mySeatAB
+    const takenIds = new Set(picks.map(p => p.player_id))
+    const captainPlayerIds = new Set()
+    const teamOf = seat => picks.filter(p => p.seat === seat).map(p => rosterName(p.player_id)).filter(Boolean)
+    const upcoming = TEAM_SEQUENCE.slice(picks.length).map((_, i) => teamTurnSeat(picks.length + i))
+    return (
+      <div className="card">
+        <div className="row" style={{ marginBottom: 4 }}>
+          <h2 className="grow" style={{ marginBottom: 0 }}>Team draft</h2>
+          <button className="btn sm ghost" onClick={onExit}>Leave</button>
+        </div>
+        <p className="small mute" style={{ marginTop: 0 }}>
+          {seatLabel(cfg.teamFirst || 'A')} won the flip and picks first. Order: 1 · 2 · 2 · 2 · 1.
+        </p>
+
+        <div className="draft-head" style={{ marginBottom: 12 }}>
+          {['A', 'B'].map(seat => (
+            <div key={seat} className="side" style={{ opacity: turnSeat && turnSeat !== seat ? 0.55 : 1 }}>
+              <div className="nm">{seatLabel(seat)}</div>
+              {captains[seat === 'A' ? room.radiant_seat : room.dire_seat] && (
+                <div className="small" style={{ fontWeight: 600 }}>👑 {captains[seat === 'A' ? room.radiant_seat : room.dire_seat]}</div>
+              )}
+              <div className="small" style={{ marginTop: 4, lineHeight: 1.6 }}>
+                {teamOf(seat).length ? teamOf(seat).map(n => <div key={n}>{n}</div>) : <span className="mute">No picks yet</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="phase-banner">
+          {doneDrafting
+            ? 'Teams are set — ready for the hero draft'
+            : <>Pick {picks.length + 1} of {totalPicks} — <b>{seatLabel(turnSeat)}</b> to choose</>}
+        </div>
+
+        {!doneDrafting && (
+          <>
+            <p className="small mute" style={{ marginBottom: 6 }}>
+              {myTurn ? 'Your pick — tap a player.' : `Waiting for ${seatLabel(turnSeat)}…`}
+              {upcoming.length > 1 && <span className="mute"> · next: {seatLabel(upcoming[1])}</span>}
+            </p>
+            <div className="row" style={{ flexWrap: 'wrap', gap: 6, marginBottom: 12, opacity: myTurn ? 1 : 0.5 }}>
+              {roster.filter(p => !captainPlayerIds.has(p.id)).map(p => {
+                const taken = takenIds.has(p.id)
+                return (
+                  <button key={p.id} className={`btn sm ${taken ? '' : 'ghost'}`}
+                    disabled={taken || !myTurn}
+                    style={taken ? { opacity: 0.3 } : {}}
+                    onClick={() => pickTeamPlayer(p.id)}>
+                    {p.name}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {mySeatAB && (
+          <div className="row" style={{ gap: 8 }}>
+            {picks.length > 0 && !doneDrafting && <button className="btn sm ghost" onClick={undoTeamPick}>Undo last pick</button>}
+            {doneDrafting && (
+              <button className="btn grow" onClick={startToss} disabled={spinning}>
+                {spinning ? 'Flipping…' : 'Flip coin & start hero draft'}
+              </button>
+            )}
+          </div>
+        )}
+        {!mySeatAB && <div className="waiting-lock">Spectating — captains are drafting teams…</div>}
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+      </div>
+    )
+  }
+
   if (stage === 'winner_choice' || stage === 'loser_side' || stage === 'loser_pick') {
     const teamMeta = cfg.teamMeta || {}
     const lbl = seat => teamMeta[seat]?.team?.trim() || `Captain ${seat === 'A' ? 1 : 2}`
