@@ -31,6 +31,24 @@ export const GODS = [
     <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="9" r="6" fill="none" stroke="currentColor" strokeWidth="1.8" /><path fill="currentColor" d="M8.5 22c.5-4 1.5-6 3.5-8 2 2 3 4 3.5 8h-7z" /><path stroke="currentColor" strokeWidth="1.4" fill="none" d="M6 9h12M12 3v12" /></svg>) },
   { key: 'athena', title: 'Athena', color: '#93c5fd', Icon: p => (
     <svg viewBox="0 0 24 24" {...p}><path fill="currentColor" d="M12 2 5 6v6c0 5 3 8.5 7 10 4-1.5 7-5 7-10V6l-7-4zm-1 6h2v4h3l-4 5-4-5h3V8z" /></svg>) },
+  // ── Norse ──
+  { key: 'odin', title: 'Odin', color: '#cbd5e1', Icon: p => (
+    <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></svg>) },
+  { key: 'thor', title: 'Thor', color: '#60a5fa', Icon: p => (
+    <svg viewBox="0 0 24 24" {...p}><path fill="currentColor" d="M5 4h14v7h-4v9h-6v-9H5V4zm2 2v3h4v9h2V9h4V6H7z" /></svg>) },
+  { key: 'loki', title: 'Loki', color: '#4ade80', Icon: p => (
+    <svg viewBox="0 0 24 24" {...p}><path fill="currentColor" d="M12 3c-2 3-6 3-6 8 0 3 2 6 6 10 4-4 6-7 6-10 0-5-4-5-6-8zm0 5c1.5 1.5 3 2.5 3 4.5S13.5 17 12 18.5 9 14.5 9 12.5 10.5 9.5 12 8z" /></svg>) },
+  { key: 'freya', title: 'Freya', color: '#f9a8d4', Icon: p => (
+    <svg viewBox="0 0 24 24" {...p}><path fill="currentColor" d="M12 21C7 16.5 4 13.5 4 10a4.5 4.5 0 018-3 4.5 4.5 0 018 3c0 3.5-3 6.5-8 11z" /><circle cx="12" cy="10" r="2" fill="#0D0B14" /></svg>) },
+  // ── Egyptian ──
+  { key: 'anubis', title: 'Anubis', color: '#a1a1aa', Icon: p => (
+    <svg viewBox="0 0 24 24" {...p}><path fill="currentColor" d="M7 2l3 5 2-2 2 2 3-5 1 8c0 3-1.5 5-4 6v5h-4v-5c-2.5-1-4-3-4-6l1-8z" /></svg>) },
+  { key: 'ra', title: 'Ra', color: '#facc15', Icon: p => (
+    <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="10" r="4" fill="currentColor" /><circle cx="12" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="1.8" /><path fill="currentColor" d="M11 18h2v4h-2z" /></svg>) },
+  { key: 'horus', title: 'Horus', color: '#38bdf8', Icon: p => (
+    <svg viewBox="0 0 24 24" {...p}><path fill="currentColor" d="M2 9c4-3 8-4 12-3 3 .7 6 .5 8-1-1 4-4 6-8 6h-2c1.5 2 1 4-1 6-.5-2-1.7-3.4-3.5-4C5.5 12.4 3.5 11 2 9zm12 5c2 1 3 3 3 6-2-1-3.5-3-3-6z" /></svg>) },
+  { key: 'isis', title: 'Isis', color: '#c4b5fd', Icon: p => (
+    <svg viewBox="0 0 24 24" {...p}><path fill="currentColor" d="M12 4a4 4 0 014 4v2h3l-2 3h-1v7h-8v-7H7l-2-3h3V8a4 4 0 014-4zm0 2a2 2 0 00-2 2v2h4V8a2 2 0 00-2-2z" /></svg>) },
 ]
 
 // Default assignments — Haris can reshuffle any player's god from their profile.
