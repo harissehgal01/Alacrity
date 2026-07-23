@@ -45,6 +45,13 @@ export default function App() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    if (!openPlayer) return
+    const onKey = e => { if (e.key === 'Escape') setOpenPlayer(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openPlayer])
+
+  useEffect(() => {
     if (new URLSearchParams(window.location.search).get('room')) setTab('draft')
   }, [])
 
@@ -113,13 +120,13 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <img className="logo" src={logo} alt="Alacrity" />
+        <img className="logo" src={logo} alt="Alacrity" style={{ cursor: 'pointer' }} onClick={() => { setOpenPlayer(null); setTab('board') }} />
         <div className="grow">
           <h1 className="brand">Alacrity Dota<small>Crew ladder · draft room</small></h1>
         </div>
         <nav className="topnav">
           {TABS.map(([id, label]) => (
-            <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
+            <button key={id} className={tab === id ? 'on' : ''} onClick={() => { setOpenPlayer(null); setTab(id) }}>{label}</button>
           ))}
         </nav>
         <div className="head-actions">
