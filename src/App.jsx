@@ -156,7 +156,7 @@ export default function App() {
           )}
         </>
       )}
-      {!loading && !openPlayer && tab === 'stats' && <Stats players={players} perfs={perfs} matches={matches} openProfile={setOpenPlayer} />}
+      {!loading && !openPlayer && tab === 'stats' && <Stats players={players} perfs={perfs} matches={matches} openProfile={setOpenPlayer} isAdmin={isAdmin} />}
       {!loading && !openPlayer && tab === 'draft' && <Draft />}
       {!loading && !openPlayer && tab === 'matches' && (
         <>
