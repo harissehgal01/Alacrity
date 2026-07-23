@@ -34,6 +34,7 @@ export default function App() {
   const [matches, setMatches] = useState([])
   const [punc, setPunc] = useState([])
   const [profiles, setProfiles] = useState([])
+  const [seasons, setSeasons] = useState([])
   const [board, setBoard] = useState('crew')
   const [openPlayer, setOpenPlayer] = useState(null)
   const [about, setAbout] = useState(false)
@@ -63,12 +64,13 @@ export default function App() {
   const reload = useCallback(async () => {
     setError(null)
     try {
-      const [pl, ma, pf, pu, pr] = await Promise.all([
+      const [pl, ma, pf, pu, pr, se] = await Promise.all([
         supabase.from('players').select('*').order('name'),
         supabase.from('matches').select('*').order('played_at', { ascending: false }),
         supabase.from('match_performances').select('*'),
         supabase.from('punctuality').select('*'),
         supabase.from('profiles').select('*'),
+        supabase.from('seasons').select('*').order('starts_at'),
       ])
       for (const r of [pl, ma, pf, pu, pr]) if (r.error) throw r.error
       const matchDates = Object.fromEntries(ma.data.map(m => [m.id, m.played_at]))
@@ -77,6 +79,7 @@ export default function App() {
       setPerfs(pf.data.map(p => ({ ...p, _played_at: matchDates[p.match_id] })))
       setPunc(pu.data)
       setProfiles(pr.data)
+      setSeasons(se.data || [])
     } catch (e) {
       setError(e.message || 'Could not reach the database.')
     } finally {
@@ -159,7 +162,7 @@ export default function App() {
       {openPlayer && (
         <div className="modal-back" onClick={() => setOpenPlayer(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} players={players} onClose={() => setOpenPlayer(null)} />
+            <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} players={players} seasons={seasons} onClose={() => setOpenPlayer(null)} />
           </div>
         </div>
       )}
