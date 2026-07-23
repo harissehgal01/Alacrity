@@ -69,6 +69,38 @@ function rateAll(list) {
   })
 }
 
+// ── Position assignment ─────────────────────────────────────────────────
+// Give a five-player team an actual 1-2-3-4-5 lineup. Primary role is free,
+// secondary costs a little, offlane-as-last-resort costs more, anything else
+// is off the table. Brute-forces all orderings — instant at five players.
+const COST_PRIMARY = 0, COST_SECONDARY = 2, COST_FALLBACK_OFF = 5, IMPOSSIBLE = 1e6
+
+function slotCost(p, pos) {
+  if (p.role_pos === pos) return COST_PRIMARY
+  if (p.role_pos2 === pos) return COST_SECONDARY
+  if (pos === 3 && p.can_offlane !== false) return COST_FALLBACK_OFF
+  return IMPOSSIBLE
+}
+
+// → { cost, lineup: [{ pos, player }] } or null when no legal lineup exists.
+export function assignPositions(team) {
+  if (team.length !== 5) return null
+  const positions = [1, 2, 3, 4, 5]
+  let best = null
+  const permute = (remaining, acc, cost) => {
+    if (cost >= (best?.cost ?? Infinity)) return
+    if (!remaining.length) { best = { cost, lineup: [...acc] }; return }
+    const pos = positions[acc.length]
+    for (const p of remaining) {
+      const c = slotCost(p, pos)
+      if (c >= IMPOSSIBLE) continue
+      permute(remaining.filter(x => x !== p), [...acc, { pos, player: p }], cost + c)
+    }
+  }
+  permute(team, [], 0)
+  return best
+}
+
 // ── Split enumeration ───────────────────────────────────────────────────
 // All ways to halve the pool, filtered for a sane role mix, sorted by how
 // close the two sides are. Returns the most balanced options.
@@ -90,24 +122,33 @@ export function suggestSplits(pool, { count = 3, requireSupport = true, maxCores
       seen.add(key)
       const sup = t => t.filter(p => p.role === 'support').length
       const cor = t => t.filter(p => p.role === 'core').length
-      if (requireSupport && (sup(a) < 1 || sup(b) < 1)) return
-      if (cor(a) > maxCores || cor(b) > maxCores) return
+      // For full five-a-side, demand a legal 1-5 lineup on both teams.
+      let fitA = null, fitB = null
+      if (a.length === 5 && b.length === 5) {
+        fitA = assignPositions(a); fitB = assignPositions(b)
+        if (!fitA || !fitB) return
+      } else {
+        if (requireSupport && (sup(a) < 1 || sup(b) < 1)) return
+        if (cor(a) > maxCores || cor(b) > maxCores) return
+      }
       const ra = a.reduce((s, p) => s + p.rating, 0)
       const rb = b.reduce((s, p) => s + p.rating, 0)
-      results.push({ a, b, ratingA: ra, ratingB: rb, gap: Math.abs(ra - rb) })
+      const roleCost = (fitA?.cost || 0) + (fitB?.cost || 0)
+      results.push({ a, b, ratingA: ra, ratingB: rb, gap: Math.abs(ra - rb), fitA, fitB, roleCost })
       return
     }
     for (let i = start; i < n; i++) combos(i + 1, [...chosen, free[i]])
   }
   combos(0, [])
 
-  results.sort((x, y) => x.gap - y.gap)
-  // Shuffle within equally-balanced ties so repeat nights aren't identical.
+  // Closest rating gap wins; among equally balanced splits prefer the one
+  // where more people are on their primary role.
+  results.sort((x, y) => (x.gap - y.gap) || (x.roleCost - y.roleCost))
   const out = []
   let i = 0
   while (out.length < count && i < results.length) {
-    const gap = results[i].gap
-    const tier = results.filter(r => r.gap === gap)
+    const { gap, roleCost } = results[i]
+    const tier = results.filter(r => r.gap === gap && r.roleCost === roleCost)
     for (let j = tier.length - 1; j > 0; j--) { const k = Math.floor(Math.random() * (j + 1)); [tier[j], tier[k]] = [tier[k], tier[j]] }
     for (const t of tier) { if (out.length < count) out.push(t) }
     i += tier.length
