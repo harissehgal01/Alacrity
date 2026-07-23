@@ -81,7 +81,7 @@ export default function Draft() {
             <button className="btn ghost" onClick={doJoin} disabled={!joinCode.trim()}>Join</button>
           </div>
           {msg && <div className={`notice ${msg.err ? 'err' : ''}`} style={{ marginTop: 10 }}>{msg.text}</div>}
-          <button className="btn ghost sm" style={{ width: '100%', marginTop: 12 }} onClick={() => doCreate('draft')}>Create a draft room</button>
+          <button className="btn" style={{ width: '100%', marginTop: 12 }} onClick={() => doCreate('draft')}>Create a draft room</button>
         </div>
         {past.length > 0 && (
           <div className="card">
