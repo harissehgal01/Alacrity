@@ -142,7 +142,7 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
       noShows,
       totalLate: total,
       avgLate: attended.length ? total / attended.length : null,
-      onTimeRate: myPunc.length ? attended.filter(r => r.minutes_late <= 0).length / punc.length : null,
+      onTimeRate: myPunc.length ? attended.filter(r => r.minutes_late <= 0).length / myPunc.length : null,
     }
   }, [myPunc])
 
