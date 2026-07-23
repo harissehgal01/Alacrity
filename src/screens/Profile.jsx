@@ -51,9 +51,9 @@ export default function Profile({ player, perfs, matches, punc = [], players = [
       <div className="row" style={{ marginBottom: 14 }}>
         <h2 className="grow" style={{ fontSize: 19, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
           <GodAvatar player={{ ...player, god_key: godKey }} size={34} />
-          <span>{player.name}<span className="small mute" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>{godOf({ ...player, god_key: godKey }).god}{myImpact?.mvps ? ` · 👑 ${myImpact.mvps} MVP${myImpact.mvps > 1 ? 's' : ''}` : ''}</span></span>
+          <span>{player.name}<span className="small mute" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>{godOf({ ...player, god_key: godKey }).title}{myImpact?.mvps ? ` · 👑 ${myImpact.mvps} MVP${myImpact.mvps > 1 ? 's' : ''}` : ''}</span></span>
         </h2>
-        <button className="btn sm ghost" onClick={() => setPickingGod(v => !v)}>{pickingGod ? 'Close' : 'Change god'}</button>
+        <button className="btn sm ghost" onClick={() => setPickingGod(v => !v)}>{pickingGod ? 'Close' : 'Change avatar'}</button>
         <button className="btn sm ghost" onClick={onClose}>Close</button>
       </div>
       {pickingGod && (
