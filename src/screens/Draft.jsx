@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth'
 import { fetchHeroes } from '../lib/opendota'
 import { SEQUENCE, turnSeconds, phaseLabel } from '../lib/draftSequence'
 import { createRoom, findRoom, claimSeat } from '../lib/room'
+import { playerProfiles, suggestSplits, winShare } from '../lib/balance'
 
 const ATTRS = [['str', 'Strength'], ['agi', 'Agility'], ['int', 'Intelligence'], ['all', 'Universal']]
 
@@ -108,7 +109,16 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const [search, setSearch] = useState('')
   const [nameDraft, setNameDraft] = useState({ team: '', players: '' })
   const [captains, setCaptains] = useState({}) // userId -> display_name
+  const [captainPlayers, setCaptainPlayers] = useState({}) // userId -> claimed player_id
   const [roster, setRoster] = useState([])
+  const [allPerfs, setAllPerfs] = useState([])
+  const [poolIds, setPoolIds] = useState([])
+  const [splits, setSplits] = useState(null)
+  const [showBalancer, setShowBalancer] = useState(false)
+
+  useEffect(() => {
+    supabase.from('match_performances').select('*').then(({ data }) => setAllPerfs(data || []))
+  }, [])
 
   useEffect(() => {
     supabase.from('players').select('id, name').order('name')
@@ -123,8 +133,11 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   useEffect(() => {
     const ids = [room.radiant_seat, room.dire_seat].filter(Boolean)
     if (!ids.length) return
-    supabase.from('profiles').select('id, display_name').in('id', ids)
-      .then(({ data }) => setCaptains(Object.fromEntries((data || []).map(p => [p.id, p.display_name || 'Captain']))))
+    supabase.from('profiles').select('id, display_name, player_id').in('id', ids)
+      .then(({ data }) => {
+        setCaptains(Object.fromEntries((data || []).map(p => [p.id, p.display_name || 'Captain'])))
+        setCaptainPlayers(Object.fromEntries((data || []).map(p => [p.id, p.player_id]).filter(([, v]) => v)))
+      })
   }, [room.radiant_seat, room.dire_seat])
 
   // chat: load + realtime
@@ -183,6 +196,8 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const teamMeta = cfg.teamMeta || {}
   const seatLabel = seat => teamMeta[seat]?.team?.trim() || `Captain ${seat === 'A' ? 1 : 2}`
   const rosterName = id => roster.find(p => p.id === id)?.name
+  const captainPlayerOf = seat => captainPlayers[seat === 'A' ? room.radiant_seat : room.dire_seat] || null
+  const captainPlayerIdSet = new Set([captainPlayerOf('A'), captainPlayerOf('B')].filter(Boolean))
   // Which seat picks at index i, given who won the flip to pick first.
   const teamTurnSeat = i => {
     const slot = TEAM_SEQUENCE[i]
@@ -221,14 +236,24 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   async function startTeamDraft() {
     if (!room.radiant_seat || !room.dire_seat) return
     setSpinning(true)
-    const firstAB = Math.random() < 0.5 ? 'A' : 'B'
+    const winnerAB = Math.random() < 0.5 ? 'A' : 'B'
     setTimeout(async () => {
       const { data } = await supabase.from('draft_rooms').update({
-        config: { ...cfg, stage: 'team_draft', teamFirst: firstAB, teamPicks: [] },
+        config: { ...cfg, stage: 'team_toss', teamTossWinner: winnerAB },
       }).eq('id', room.id).select().single()
       if (data) setRoom(data)
       setSpinning(false)
     }, 900)
+  }
+
+  // Toss winner decides whether to pick players first or second.
+  async function chooseTeamOrder(wantFirst) {
+    const winner = cfg.teamTossWinner
+    const other = winner === 'A' ? 'B' : 'A'
+    const { data } = await supabase.from('draft_rooms').update({
+      config: { ...cfg, stage: 'team_draft', teamFirst: wantFirst ? winner : other, teamPicks: [] },
+    }).eq('id', room.id).select().single()
+    if (data) setRoom(data)
   }
 
   async function pickTeamPlayer(pid) {
@@ -258,6 +283,33 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     }
     const { data } = await supabase.from('draft_rooms')
       .update({ config: { ...cfg, teamPicks: next, teamMeta: meta } }).eq('id', room.id).select().single()
+    if (data) setRoom(data)
+  }
+
+  const profiles = useMemo(() => playerProfiles(allPerfs, roster), [allPerfs, roster])
+
+  function generateSplits() {
+    const capA = profiles.find(p => p.id === captainPlayerOf('A'))
+    const capB = profiles.find(p => p.id === captainPlayerOf('B'))
+    const pool = profiles.filter(p => poolIds.includes(p.id) || p.id === capA?.id || p.id === capB?.id)
+    setSplits(suggestSplits(pool, {
+      count: 3, requireSupport: true, maxCores: 3,
+      pinA: capA ? [capA] : [], pinB: capB ? [capB] : [],
+    }))
+  }
+
+  // Write a suggested split straight into both squads and open the hero draft.
+  async function applySplit(sp) {
+    const meta = { ...teamMeta }
+    meta.A = { ...(meta.A || {}), playerIds: sp.a.map(p => p.id) }
+    meta.B = { ...(meta.B || {}), playerIds: sp.b.map(p => p.id) }
+    const picks = [
+      ...sp.a.filter(p => p.id !== captainPlayerOf('A')).map(p => ({ seat: 'A', player_id: p.id })),
+      ...sp.b.filter(p => p.id !== captainPlayerOf('B')).map(p => ({ seat: 'B', player_id: p.id })),
+    ]
+    const { data } = await supabase.from('draft_rooms')
+      .update({ config: { ...cfg, teamMeta: meta, teamPicks: picks, stage: 'lobby', autoBalanced: true } })
+      .eq('id', room.id).select().single()
     if (data) setRoom(data)
   }
 
@@ -460,14 +512,87 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {mySeatAB && (
+          <div className="card" style={{ background: 'var(--bg0)', margin: '10px 0' }}>
+            <div className="row" style={{ marginBottom: showBalancer ? 10 : 0 }}>
+              <div className="grow">
+                <div style={{ fontWeight: 600 }}>Auto-balance teams</div>
+                <div className="small mute">Skip the manual draft — let the app split tonight's players evenly.</div>
+              </div>
+              <button className="btn sm ghost" onClick={() => setShowBalancer(v => !v)}>{showBalancer ? 'Close' : 'Open'}</button>
+            </div>
+            {showBalancer && (
+              <>
+                <p className="small mute" style={{ marginTop: 0, marginBottom: 6 }}>Tap everyone playing tonight ({poolIds.length} selected — needs an even number).</p>
+                <div className="row" style={{ flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                  {profiles.filter(p => !captainPlayerIdSet.has(p.id)).map(p => (
+                    <button key={p.id} className={`btn sm ${poolIds.includes(p.id) ? '' : 'ghost'}`}
+                      onClick={() => { setSplits(null); setPoolIds(ids => ids.includes(p.id) ? ids.filter(x => x !== p.id) : [...ids, p.id]) }}>
+                      {p.name}<span className="mute" style={{ marginLeft: 5, fontSize: 10 }}>{p.role === 'support' ? 'SUP' : p.role === 'core' ? 'CORE' : 'FLEX'}</span>
+                    </button>
+                  ))}
+                </div>
+                <button className="btn sm" disabled={poolIds.length < 4 || poolIds.length % 2} onClick={generateSplits}>
+                  {poolIds.length % 2 ? 'Pick an even number' : 'Suggest balanced teams'}
+                </button>
+                {splits && splits.length === 0 && <div className="notice err" style={{ marginTop: 10 }}>No split satisfies the role rules — each side needs at least one support.</div>}
+                {splits && splits.map((sp, i) => (
+                  <div key={i} className="card" style={{ background: 'var(--bg1)', marginTop: 10, padding: 12 }}>
+                    <div className="row" style={{ marginBottom: 6 }}>
+                      <div className="eyebrow grow">Option {i + 1}</div>
+                      <div className="small num mute">{Math.round(winShare(sp) * 100)}% / {100 - Math.round(winShare(sp) * 100)}%</div>
+                    </div>
+                    <div className="draft-head" style={{ marginBottom: 8 }}>
+                      {['a', 'b'].map(k => (
+                        <div key={k} className="side">
+                          <div className="nm">{seatLabel(k === 'a' ? 'A' : 'B')}</div>
+                          <div className="small" style={{ lineHeight: 1.6 }}>{sp[k].map(p => <div key={p.id}>{p.name}</div>)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="btn sm" style={{ width: '100%' }} onClick={() => applySplit(sp)}>Use these teams →</button>
+                  </div>
+                ))}
+                {splits && splits.length > 0 && <button className="btn sm ghost" style={{ marginTop: 8 }} onClick={generateSplits}>Reroll</button>}
+              </>
+            )}
+          </div>
+        )}
+        {mySeatAB && (
           <div className="toss-wrap" style={{ paddingTop: 6 }}>
             <div className={`coin ${spinning ? 'spin' : ''}`}>{spinning ? '' : 'Toss'}</div>
             <button className="btn" onClick={startTeamDraft} disabled={!bothSeated || spinning}>
               {!bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip for first pick'}
             </button>
+            <p className="small mute" style={{ marginTop: 8 }}>…or draft players manually.</p>
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — waiting for both captains…</div>}
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+      </div>
+    )
+  }
+
+  /* ── TEAM TOSS: winner picks order ── */
+  if (stage === 'team_toss') {
+    const winner = cfg.teamTossWinner
+    const iWonTeamToss = mySeatAB === winner
+    return (
+      <div className="card toss-wrap">
+        <div className="row" style={{ marginBottom: 4 }}>
+          <h2 className="grow" style={{ marginBottom: 0 }}>Team selection</h2>
+          <button className="btn sm ghost" onClick={onExit}>Leave</button>
+        </div>
+        <div className="coin">🪙</div>
+        <p style={{ fontWeight: 600, marginBottom: 4 }}>{seatLabel(winner)} won the toss</p>
+        {iWonTeamToss ? (
+          <>
+            <p className="small mute">Pick first, or let them go first and take the next two?</p>
+            <div className="choice-grid">
+              <button className="btn" onClick={() => chooseTeamOrder(true)}>Pick first</button>
+              <button className="btn" onClick={() => chooseTeamOrder(false)}>Pick second</button>
+            </div>
+          </>
+        ) : <div className="waiting-lock">Waiting for {seatLabel(winner)} to choose pick order…</div>}
         <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
       </div>
     )
@@ -481,8 +606,13 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     const turnSeat = doneDrafting ? null : teamTurnSeat(picks.length)
     const myTurn = turnSeat && turnSeat === mySeatAB
     const takenIds = new Set(picks.map(p => p.player_id))
-    const captainPlayerIds = new Set()
-    const teamOf = seat => picks.filter(p => p.seat === seat).map(p => rosterName(p.player_id)).filter(Boolean)
+    const captainPlayerIds = captainPlayerIdSet
+    const teamOf = seat => {
+      const cap = captainPlayerOf(seat)
+      const capName = cap ? rosterName(cap) : null
+      const rest = picks.filter(p => p.seat === seat).map(p => rosterName(p.player_id)).filter(Boolean)
+      return capName ? [capName + ' (C)', ...rest] : rest
+    }
     const upcoming = TEAM_SEQUENCE.slice(picks.length).map((_, i) => teamTurnSeat(picks.length + i))
     return (
       <div className="card">
