@@ -7,10 +7,11 @@ export function makeCode() {
   return 'DOTA-' + s
 }
 
-export async function createRoom(userId) {
+export async function createRoom(userId, kind = 'draft') {
   const code = makeCode()
   const { data, error } = await supabase.from('draft_rooms').insert({
     code, created_by: userId, status: 'lobby',
+    config: kind === 'teams' ? { stage: 'team_lobby' } : {},
   }).select().single()
   if (error) throw error
   return data
