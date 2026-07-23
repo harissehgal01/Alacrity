@@ -46,9 +46,9 @@ export default function Draft() {
     return () => supabase.removeChannel(ch)
   }, [room?.id])
 
-  async function doCreate() {
+  async function doCreate(kind = 'draft') {
     setMsg(null)
-    try { setRoom(await createRoom(user.id)) } catch (e) { setMsg({ err: true, text: e.message }) }
+    try { setRoom(await createRoom(user.id, kind)) } catch (e) { setMsg({ err: true, text: e.message }) }
   }
   async function doJoin() {
     setMsg(null)
@@ -66,14 +66,19 @@ export default function Draft() {
     return (
       <>
         <div className="card">
-          <h2>Draft room</h2>
-          <p className="small mute" style={{ marginTop: 0 }}>Create a room and share the code, or join one. Two captains claim seats, flip the coin, then draft — everyone else spectates live.</p>
-          <button className="btn" style={{ width: '100%', marginBottom: 12 }} onClick={doCreate}>Create a room</button>
+          <h2>Team selection</h2>
+          <p className="small mute" style={{ marginTop: 0 }}>Start here. Two captains claim seats, the coin decides who picks first, then players go 1 · 2 · 2 · 2 · 1. Share the code so the crew can watch it live. When teams are locked you move straight into the hero draft.</p>
+          <button className="btn" style={{ width: '100%' }} onClick={() => doCreate('teams')}>Start team selection</button>
+        </div>
+        <div className="card">
+          <h2>Join a room</h2>
+          <p className="small mute" style={{ marginTop: 0 }}>One code covers both phases — team selection and the hero draft that follows.</p>
           <div className="row">
             <input className="input grow" placeholder="Enter room code (e.g. DOTA-7F3K)" value={joinCode} onChange={e => setJoinCode(e.target.value)} />
             <button className="btn ghost" onClick={doJoin} disabled={!joinCode.trim()}>Join</button>
           </div>
           {msg && <div className={`notice ${msg.err ? 'err' : ''}`} style={{ marginTop: 10 }}>{msg.text}</div>}
+          <button className="btn ghost sm" style={{ width: '100%', marginTop: 12 }} onClick={() => doCreate('draft')}>Skip to hero draft (teams already set)</button>
         </div>
         {past.length > 0 && (
           <div className="card">
@@ -256,6 +261,12 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     if (data) setRoom(data)
   }
 
+  async function goToHeroDraft() {
+    const { data } = await supabase.from('draft_rooms')
+      .update({ config: { ...cfg, stage: 'lobby' } }).eq('id', room.id).select().single()
+    if (data) setRoom(data)
+  }
+
   async function startToss() {
     if (!room.radiant_seat || !room.dire_seat) return
     setSpinning(true)
@@ -370,7 +381,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <div className="room-code">{room.code}</div>
           <button className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => navigator.clipboard?.writeText(shareLink)}>Copy invite link</button>
         </div>
-        <p className="small mute" style={{ textAlign: 'center' }}>Sides aren't decided yet — claim a captain seat, then flip the coin. Radiant/Dire and pick order come from the toss.</p>
+        <p className="small mute" style={{ textAlign: 'center' }}>{(cfg.teamPicks || []).length ? 'Teams are locked. Flip the coin to decide Radiant/Dire and first pick.' : "Sides aren't decided yet — claim a captain seat, then flip the coin. Radiant/Dire and pick order come from the toss."}</p>
         <div className="seat-grid">
           {['A', 'B'].map(seat => {
             const seatUser = seat === 'A' ? room.radiant_seat : room.dire_seat
@@ -411,6 +422,57 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   }
 
   /* ── TOSS CHOICES ── */
+  /* ── TEAM SELECTION LOBBY ── */
+  if (stage === 'team_lobby') {
+    const bothSeated = room.radiant_seat && room.dire_seat
+    return (
+      <div className="card">
+        <div className="row" style={{ marginBottom: 4 }}>
+          <h2 className="grow" style={{ marginBottom: 0 }}>Team selection</h2>
+          <button className="btn sm ghost" onClick={onExit}>Leave</button>
+        </div>
+        <div className="room-hero">
+          <div className="eyebrow">Room code</div>
+          <div className="room-code">{room.code}</div>
+          <button className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => navigator.clipboard?.writeText(shareLink)}>Copy invite link</button>
+        </div>
+        <p className="small mute" style={{ textAlign: 'center' }}>Two captains claim a seat. Everyone else can join with this code and watch the picks happen live.</p>
+        <div className="seat-grid">
+          {['A', 'B'].map(seat => {
+            const seatUser = seat === 'A' ? room.radiant_seat : room.dire_seat
+            const isMe = seatUser === user.id
+            const taken = !!seatUser
+            return (
+              <div key={seat} className={`seat ${taken ? 'taken' : ''} ${isMe ? 'seat-me' : ''}`}>
+                <div style={{ fontWeight: 700 }}>{seatLabel(seat)}</div>
+                <div className="st">{taken ? (captains[seatUser] || 'Claimed') + (isMe ? ' (you)' : '') : 'Open'}</div>
+                {!taken && !mySeatAB && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => claim(seat)}>Claim captain seat</button>}
+              </div>
+            )
+          })}
+        </div>
+        {mySeatAB && (
+          <div className="card" style={{ background: 'var(--bg0)', margin: '10px 0' }}>
+            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>Optional — name your team.</p>
+            <input className="input" style={{ marginBottom: 8 }} placeholder="Team name (optional)"
+              defaultValue={teamMeta[mySeatAB]?.team || ''} onChange={e => setNameDraft(n => ({ ...n, team: e.target.value }))} />
+            <button className="btn sm" onClick={saveNames}>Save team name</button>
+          </div>
+        )}
+        {mySeatAB && (
+          <div className="toss-wrap" style={{ paddingTop: 6 }}>
+            <div className={`coin ${spinning ? 'spin' : ''}`}>{spinning ? '' : 'Toss'}</div>
+            <button className="btn" onClick={startTeamDraft} disabled={!bothSeated || spinning}>
+              {!bothSeated ? 'Waiting for both captains…' : spinning ? 'Flipping…' : 'Flip for first pick'}
+            </button>
+          </div>
+        )}
+        {!mySeatAB && <div className="waiting-lock">Spectating — waiting for both captains…</div>}
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+      </div>
+    )
+  }
+
   /* ── TEAM DRAFT ── */
   if (stage === 'team_draft') {
     const picks = cfg.teamPicks || []
@@ -478,9 +540,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <div className="row" style={{ gap: 8 }}>
             {picks.length > 0 && !doneDrafting && <button className="btn sm ghost" onClick={undoTeamPick}>Undo last pick</button>}
             {doneDrafting && (
-              <button className="btn grow" onClick={startToss} disabled={spinning}>
-                {spinning ? 'Flipping…' : 'Flip coin & start hero draft'}
-              </button>
+              <button className="btn grow" onClick={goToHeroDraft}>Lock teams & open hero draft →</button>
             )}
           </div>
         )}
