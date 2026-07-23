@@ -4,17 +4,67 @@ import { aggregate, fmt, impactStats, filterBySeason } from '../lib/stats'
 import { fetchHeroes } from '../lib/opendota'
 import { GodAvatar, godOf, GodPicker, ThemePicker, themeOf } from '../lib/gods'
 
-// Minimal SVG sparkline. values: number[], color: css color.
-function Spark({ values, color = 'var(--gold)', height = 36 }) {
-  if (!values.length) return null
-  const w = Math.max(60, values.length * 12)
-  const max = Math.max(...values, 1), min = Math.min(...values, 0)
-  const range = max - min || 1
-  const pts = values.map((v, i) => `${(i / Math.max(1, values.length - 1)) * w},${height - ((v - min) / range) * (height - 4) - 2}`).join(' ')
+// Match Ribbon — interactive area chart over recent games.
+// Dots are win/loss colored; hover/tap shows a tooltip with hero + numbers.
+function MatchRibbon({ games, imgByHero, accent }) {
+  const [metric, setMetric] = useState('kda')
+  const [tip, setTip] = useState(null) // { i, x, y }
+  if (games.length < 3) return null
+  const METRICS = [['kda', 'KDA'], ['net_worth', 'Net worth'], ['hero_damage', 'Hero dmg']]
+  const val = g => metric === 'kda' ? +(((g.kills + g.assists) / Math.max(1, g.deaths)).toFixed(1)) : (g[metric] || 0)
+  const W = 660, H = 200, P = 26
+  const vals = games.map(val)
+  const max = Math.max(...vals) * 1.15 || 1
+  const x = i => P + i * (W - 2 * P) / Math.max(1, games.length - 1)
+  const y = v => H - P - (v / max) * (H - 2 * P)
+  const pts = vals.map((v, i) => `${x(i)},${y(v)}`)
+  const area = `M${x(0)},${H - P} L${pts.join(' L')} L${x(games.length - 1)},${H - P} Z`
+  const g = tip != null ? games[tip.i] : null
   return (
-    <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
+    <div className="stat" style={{ gridColumn: '1 / -1', position: 'relative' }}>
+      <div className="row" style={{ marginBottom: 8 }}>
+        <div className="k grow">Form <span className="formula">last {games.length} games</span></div>
+        <div className="seg" style={{ margin: 0 }}>
+          {METRICS.map(([k, label]) => <button key={k} className={metric === k ? 'on' : ''} onClick={() => setMetric(k)}>{label}</button>)}
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', width: '100%' }} onMouseLeave={() => setTip(null)}>
+        <defs>
+          <linearGradient id="ribbonGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={accent} stopOpacity="0.28" />
+            <stop offset="1" stopColor={accent} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#ribbonGrad)" />
+        <polyline points={pts.join(' ')} fill="none" stroke={accent} strokeWidth="2.5" strokeLinejoin="round" />
+        {games.map((gm, i) => (
+          <circle key={gm.id} cx={x(i)} cy={y(vals[i])} r={tip?.i === i ? 8 : 6.5}
+            fill={gm.won ? 'var(--radiant, #3fb950)' : 'var(--dire, #f85149)'}
+            stroke="var(--bg1, #16131f)" strokeWidth="2.5" style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setTip({ i, x: x(i), y: y(vals[i]) })}
+            onClick={() => setTip(t => t?.i === i ? null : { i, x: x(i), y: y(vals[i]) })} />
+        ))}
+      </svg>
+      {g && (
+        <div style={{
+          position: 'absolute', pointerEvents: 'none', zIndex: 5,
+          left: `clamp(0px, calc(${(tip.x / W) * 100}% - 80px), calc(100% - 170px))`,
+          top: `calc(${(tip.y / H) * 100}% - 26px)`,
+          background: 'var(--bg2, #1e1a2a)', border: '1px solid var(--line)', borderRadius: 10,
+          padding: '8px 10px', fontSize: 12, minWidth: 160, boxShadow: '0 8px 24px rgba(0,0,0,.5)',
+        }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {imgByHero.get(g.hero_name) && <img src={imgByHero.get(g.hero_name)} alt="" style={{ width: 44, height: 25, objectFit: 'cover', borderRadius: 4 }} />}
+            <div>
+              <b>{g.hero_name}</b>{' '}
+              <span style={{ fontWeight: 700, fontSize: 11, color: g.won ? 'var(--radiant, #3fb950)' : 'var(--dire, #f85149)' }}>{g.won ? 'WIN' : 'LOSS'}</span>
+              <div className="mute num">{g.kills}/{g.deaths}/{g.assists} · {metric === 'kda' ? `${val(g)} KDA` : fmt.n(val(g))}</div>
+              <div className="mute num" style={{ fontSize: 11 }}>{new Date(g.match.played_at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -73,19 +123,13 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
     reload && reload()
   }
 
-  // Trend series over last 15 games (oldest → newest).
-  const trend = useMemo(() => {
-    const mine = perfs.filter(p => p.player_id === player.id)
+  // Last 15 games with match info, oldest → newest, for the ribbon.
+  const trendGames = useMemo(() => {
+    return perfs.filter(p => p.player_id === player.id)
       .map(p => ({ ...p, match: matches.find(m => m.id === p.match_id) }))
       .filter(p => p.match)
       .sort((a, b) => new Date(a.match.played_at) - new Date(b.match.played_at))
       .slice(-15)
-    return {
-      kda: mine.map(p => (p.kills + p.assists) / Math.max(1, p.deaths)),
-      net: mine.map(p => p.net_worth || 0),
-      dmg: mine.map(p => p.hero_damage || 0),
-      n: mine.length,
-    }
   }, [perfs, matches, player.id])
   const myPunc = useMemo(() => punc.filter(r => r.player_id === player.id), [punc, player.id])
 
@@ -160,20 +204,9 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
         </div>
       )}
 
-      {trend.n >= 3 && (
+      {trendGames.length >= 3 && (
         <div className="stat-grid" style={{ marginBottom: 16 }}>
-          <div className="stat">
-            <div className="k">KDA trend <span className="formula">last {trend.n} games</span></div>
-            <Spark values={trend.kda} color="var(--gold)" />
-          </div>
-          <div className="stat">
-            <div className="k">Net worth trend</div>
-            <Spark values={trend.net} color="var(--radiant, #3fb950)" />
-          </div>
-          <div className="stat" style={{ gridColumn: '1 / -1' }}>
-            <div className="k">Hero damage trend</div>
-            <Spark values={trend.dmg} color="var(--dire-hi, #f85149)" height={42} />
-          </div>
+          <MatchRibbon games={trendGames} imgByHero={imgByHero} accent={themeOf(localPlayer).accent} />
         </div>
       )}
 
