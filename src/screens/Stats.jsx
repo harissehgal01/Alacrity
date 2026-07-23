@@ -112,7 +112,7 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
             <button key={player.id} className={`lb-row ${i === 0 ? 'first' : ''}`} onClick={() => openProfile(player)}>
               <div className="lb-rank num">{i + 1}</div>
               <div className="grow">
-                <div className="lb-name">{player.name}</div>
+                <div className="lb-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><GodAvatar player={player} size={18} />{player.name}</div>
                 <div className="lb-sub num">{s.games} games</div>
               </div>
               <div className="right"><div className="lb-wr num">{active.fmt(s[statKey])}</div></div>
@@ -198,7 +198,7 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
               <div className="who" style={{ marginTop: 6, lineHeight: 2 }}>
                 {impact.mvpLeaders.slice(0, 6).map(r => {
                   const p = players.find(x => x.id === r.player_id)
-                  return p ? <span key={r.player_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 14 }}><GodAvatar name={p.name} size={20} /> {p.name} 👑×{r.mvps}</span> : null
+                  return p ? <span key={r.player_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 14 }}><GodAvatar player={p} size={20} /> {p.name} 👑×{r.mvps}</span> : null
                 })}
               </div>
             </div>

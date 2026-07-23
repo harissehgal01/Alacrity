@@ -1,15 +1,24 @@
 import { useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import { aggregate, fmt, impactStats } from '../lib/stats'
-import { GodAvatar, godOf } from '../lib/gods'
+import { GodAvatar, godOf, GodPicker } from '../lib/gods'
 
 export default function Profile({ player, perfs, matches, punc = [], players = [], onClose }) {
   const [openMatch, setOpenMatch] = useState(null)
+  const [pickingGod, setPickingGod] = useState(false)
+  const [godKey, setGodKey] = useState(player.god_key || null)
   const s = useMemo(() => aggregate(perfs.filter(p => p.player_id === player.id)).get(player.id), [perfs, player.id])
   const myImpact = useMemo(() => {
     const all = impactStats(perfs, 1)
     return [...all.mvpLeaders, ...all.mostImpactful].find(r => r.player_id === player.id) ||
       all.mostImpactful.find(r => r.player_id === player.id) || null
   }, [perfs, player.id])
+
+  async function pickGod(key) {
+    setGodKey(key)
+    setPickingGod(false)
+    await supabase.from('players').update({ god_key: key }).eq('id', player.id)
+  }
   const myPunc = useMemo(() => punc.filter(r => r.player_id === player.id), [punc, player.id])
 
   const puncStats = useMemo(() => {
@@ -41,11 +50,17 @@ export default function Profile({ player, perfs, matches, punc = [], players = [
     <>
       <div className="row" style={{ marginBottom: 14 }}>
         <h2 className="grow" style={{ fontSize: 19, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <GodAvatar name={player.name} size={34} />
-          <span>{player.name}<span className="small mute" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>{godOf(player.name).god}{myImpact?.mvps ? ` · 👑 ${myImpact.mvps} MVP${myImpact.mvps > 1 ? 's' : ''}` : ''}</span></span>
+          <GodAvatar player={{ ...player, god_key: godKey }} size={34} />
+          <span>{player.name}<span className="small mute" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>{godOf({ ...player, god_key: godKey }).god}{myImpact?.mvps ? ` · 👑 ${myImpact.mvps} MVP${myImpact.mvps > 1 ? 's' : ''}` : ''}</span></span>
         </h2>
+        <button className="btn sm ghost" onClick={() => setPickingGod(v => !v)}>{pickingGod ? 'Close' : 'Change god'}</button>
         <button className="btn sm ghost" onClick={onClose}>Close</button>
       </div>
+      {pickingGod && (
+        <div className="card" style={{ background: 'var(--bg0)', marginBottom: 14 }}>
+          <GodPicker player={{ ...player, god_key: godKey }} allPlayers={players} onPick={pickGod} />
+        </div>
+      )}
 
       {!s && <p className="mute">No games logged yet for {player.name}.</p>}
 
