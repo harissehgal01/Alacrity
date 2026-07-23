@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { fmt } from '../lib/stats'
+import { fmt, mvpByMatch } from '../lib/stats'
 import { fetchHeroes } from '../lib/opendota'
 
 // Games within this many minutes of each other are grouped into one session.
@@ -21,6 +21,7 @@ export default function Matches({ matches, perfs, players, reload }) {
     return m
   }, [perfs])
 
+  const mvps = useMemo(() => mvpByMatch(perfs), [perfs])
   const named = id => players.find(p => p.id === id)?.name || '?'
 
   const shown = useMemo(() => {
@@ -82,7 +83,7 @@ export default function Matches({ matches, perfs, players, reload }) {
                   <div className="grow small">
                     <div>{new Date(m.played_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · <span className="mute num">{fmt.dur(m.duration_seconds)}</span> {m.dota_match_id && <span className="mute num">· #{m.dota_match_id}</span>}</div>
                     <div className="mute" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {ps.map(p => `${named(p.player_id)}${p.won ? ' ✓' : ''}`).join(' · ')}
+                      {ps.map(p => `${mvps.get(m.id)?.player_id === p.player_id ? '👑 ' : ''}${named(p.player_id)}${p.won ? ' ✓' : ''}`).join(' · ')}
                     </div>
                   </div>
                   <button className="btn sm danger" onClick={() => remove(m)}>✕</button>

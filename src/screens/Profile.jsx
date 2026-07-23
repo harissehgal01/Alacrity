@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { aggregate, fmt, impactStats, filterBySeason } from '../lib/stats'
+import { aggregate, fmt, impactStats, filterBySeason, mvpByMatch } from '../lib/stats'
 import { fetchHeroes } from '../lib/opendota'
 import { GodAvatar, godOf, GodPicker, ThemePicker, themeOf } from '../lib/gods'
 import { ROLES, roleLabel } from '../lib/balance'
@@ -79,6 +79,7 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
   const [heroes, setHeroes] = useState([])
   useEffect(() => { fetchHeroes().then(setHeroes).catch(() => {}) }, [])
   const imgByHero = useMemo(() => new Map(heroes.map(h => [h.name, h.img])), [heroes])
+  const mvps = useMemo(() => mvpByMatch(allPerfs), [allPerfs])
 
   const season = seasons.find(s => s.id === seasonId) || null
   const { matches, perfs } = useMemo(() => filterBySeason(allMatches, allPerfs, season), [allMatches, allPerfs, season])
@@ -291,6 +292,7 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
             {allMatchLogs.map(p => (
               <button key={p.id} className="match-row small match-log-row" onClick={() => setOpenMatch(p)}>
                 <span className={`tag ${p.won ? 'rad' : 'dire'}`}>{p.won ? 'W' : 'L'}</span>
+                {mvps.get(p.match_id)?.player_id === p.player_id && <span title="MVP of this game">👑</span>}
                 {imgByHero.get(p.hero_name) && <img src={imgByHero.get(p.hero_name)} alt="" style={{ width: 36, height: 20, objectFit: 'cover', borderRadius: 4 }} />}
                 <div className="grow">
                   {p.hero_name || 'Unknown hero'} <span className="mute num">· {p.kills}/{p.deaths}/{p.assists} · {fmt.n(p.hero_damage)} dmg</span>
@@ -319,6 +321,7 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
 }
 
 function MatchLog({ matchRow, perfs, players, imgByHero = new Map(), onBack, onClose }) {
+  const mvpId = mvpByMatch(perfs).get(matchRow.match_id)?.player_id
   const nameOf = row => {
     if (row.player_id) return players.find(p => p.id === row.player_id)?.name || 'Unknown'
     return 'Guest'
@@ -350,6 +353,7 @@ function MatchLog({ matchRow, perfs, players, imgByHero = new Map(), onBack, onC
           <div className="eyebrow" style={{ marginBottom: 6, color: label === 'Radiant' ? 'var(--radiant)' : 'var(--dire-hi)' }}>{label}</div>
           {side.map(r => (
             <div key={r.id} className="match-log-detail-row">
+              {r.player_id === mvpId && <span title="MVP" style={{ marginRight: 4 }}>👑</span>}
               {imgByHero.get(r.hero_name) && <img src={imgByHero.get(r.hero_name)} alt="" style={{ width: 40, height: 22, objectFit: 'cover', borderRadius: 4, marginRight: 8, flexShrink: 0 }} />}
               <div className="grow">
                 <div style={{ fontWeight: 600 }}>{nameOf(r)}<span className="mute" style={{ fontWeight: 400 }}> · {r.hero_name || '—'}</span></div>

@@ -4,6 +4,13 @@ import { fetchHeroes } from '../lib/opendota'
 import { aggregate, heroStats, banStats, funFacts, fmt, impactStats, filterBySeason, versusRecord, togetherRecord } from '../lib/stats'
 import { GodAvatar } from '../lib/gods'
 
+// Per-game record keys → the performance column that sets them.
+const MAX_FIELD = {
+  maxKills: 'kills', maxHeroDamage: 'hero_damage', maxTowerDamage: 'tower_damage',
+  maxNetWorth: 'net_worth', maxAssists: 'assists', maxCampsStacked: 'camps_stacked', maxDewards: 'dewards',
+}
+const RECORD_FRESH_DAYS = 7
+
 const CATEGORIES = [
   { group: 'Per-game records', options: [
     { key: 'maxKills', label: 'Most kills in a game', fmt: v => v },
@@ -40,7 +47,7 @@ const CATEGORIES = [
 const ALL_OPTIONS = CATEGORIES.flatMap(g => g.options)
 const VIEWS = [['players', 'Players'], ['heroes', 'Heroes'], ['rivalries', 'Rivalries'], ['facts', 'Fun facts']]
 
-export default function Stats({ players, perfs: allPerfs, matches: allMatches, openProfile }) {
+export default function Stats({ players, perfs: allPerfs, matches: allMatches, openProfile, isAdmin }) {
   const [view, setView] = useState('players')
   const [statKey, setStatKey] = useState('maxKills')
   const [heroSort, setHeroSort] = useState('games')
@@ -48,6 +55,7 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
   const [draftRooms, setDraftRooms] = useState([])
   const [seasons, setSeasons] = useState([])
   const [seasonId, setSeasonId] = useState('all')
+  const [newSeason, setNewSeason] = useState(null)
   const [rivalA, setRivalA] = useState([])
   const [rivalB, setRivalB] = useState([])
 
@@ -63,6 +71,23 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
   const { matches, perfs } = useMemo(() => filterBySeason(allMatches, allPerfs, season), [allMatches, allPerfs, season])
 
   const stats = useMemo(() => aggregate(perfs), [perfs])
+
+  // A record counts as fresh if the game that set it was in the last week.
+  const freshRecord = (playerId, value) => {
+    const field = MAX_FIELD[statKey]
+    if (!field || value == null) return false
+    const hit = perfs.find(p => p.player_id === playerId && (p[field] || 0) === value)
+    if (!hit) return false
+    const when = hit._played_at || matches.find(m => m.id === hit.match_id)?.played_at
+    if (!when) return false
+    return (Date.now() - new Date(when).getTime()) / 86400000 <= RECORD_FRESH_DAYS
+  }
+
+  async function createSeason() {
+    if (!newSeason?.name || !newSeason.starts_at || !newSeason.ends_at) return
+    const { data } = await supabase.from('seasons').insert(newSeason).select().single()
+    if (data) { setSeasons(ss => [...ss, data]); setNewSeason(null); setSeasonId(data.id) }
+  }
   const impact = useMemo(() => impactStats(perfs), [perfs])
   const active = ALL_OPTIONS.find(o => o.key === statKey)
 
@@ -96,7 +121,19 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
           <option value="all">All time</option>
           {seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+        {isAdmin && <button className="btn sm ghost" onClick={() => setNewSeason(newSeason ? null : { name: '', starts_at: '', ends_at: '' })}>{newSeason ? 'Cancel' : '+ Season'}</button>}
       </div>
+      {isAdmin && newSeason && (
+        <div className="card" style={{ background: 'var(--bg0)', marginBottom: 14 }}>
+          <input className="input" style={{ marginBottom: 8 }} placeholder="Season name (e.g. Autumn '26)"
+            value={newSeason.name} onChange={e => setNewSeason(n => ({ ...n, name: e.target.value }))} />
+          <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+            <input className="input grow" type="date" value={newSeason.starts_at} onChange={e => setNewSeason(n => ({ ...n, starts_at: e.target.value }))} />
+            <input className="input grow" type="date" value={newSeason.ends_at} onChange={e => setNewSeason(n => ({ ...n, ends_at: e.target.value }))} />
+          </div>
+          <button className="btn sm" onClick={createSeason} disabled={!newSeason.name || !newSeason.starts_at || !newSeason.ends_at}>Create season</button>
+        </div>
+      )}
 
       {view === 'players' && (
         <>
@@ -115,7 +152,10 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
                 <div className="lb-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><GodAvatar player={player} size={18} />{player.name}</div>
                 <div className="lb-sub num">{s.games} games</div>
               </div>
-              <div className="right"><div className="lb-wr num">{active.fmt(s[statKey])}</div></div>
+              <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {i === 0 && freshRecord(player.id, s[statKey]) && <span className="tag" style={{ fontSize: 9, background: 'rgba(240,180,41,.16)', color: 'var(--gold)' }}>NEW</span>}
+                <div className="lb-wr num">{active.fmt(s[statKey])}</div>
+              </div>
             </button>
           ))}
         </>
