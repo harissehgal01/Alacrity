@@ -2,12 +2,27 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { aggregate, fmt, impactStats, filterBySeason } from '../lib/stats'
 import { fetchHeroes } from '../lib/opendota'
-import { GodAvatar, godOf, GodPicker } from '../lib/gods'
+import { GodAvatar, godOf, GodPicker, ThemePicker, themeOf } from '../lib/gods'
 
-export default function Profile({ player, perfs: allPerfs, matches: allMatches, punc = [], players = [], seasons = [], onClose }) {
+// Minimal SVG sparkline. values: number[], color: css color.
+function Spark({ values, color = 'var(--gold)', height = 36 }) {
+  if (!values.length) return null
+  const w = Math.max(60, values.length * 12)
+  const max = Math.max(...values, 1), min = Math.min(...values, 0)
+  const range = max - min || 1
+  const pts = values.map((v, i) => `${(i / Math.max(1, values.length - 1)) * w},${height - ((v - min) / range) * (height - 4) - 2}`).join(' ')
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export default function Profile({ player, perfs: allPerfs, matches: allMatches, punc = [], players = [], seasons = [], reload, onClose }) {
   const [openMatch, setOpenMatch] = useState(null)
   const [pickingGod, setPickingGod] = useState(false)
-  const [godKey, setGodKey] = useState(player.god_key || null)
+  const [pickingTheme, setPickingTheme] = useState(false)
+  const [localPlayer, setLocalPlayer] = useState(player)
   const [seasonId, setSeasonId] = useState('all')
   const [heroes, setHeroes] = useState([])
   useEffect(() => { fetchHeroes().then(setHeroes).catch(() => {}) }, [])
@@ -45,11 +60,33 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
     return mine.slice(-10)
   }, [perfs, matches, player.id])
 
-  async function pickGod(key) {
-    setGodKey(key)
+  async function saveAvatar(patch) {
+    setLocalPlayer(lp => ({ ...lp, ...patch }))
     setPickingGod(false)
-    await supabase.from('players').update({ god_key: key }).eq('id', player.id)
+    await supabase.from('players').update(patch).eq('id', player.id)
+    reload && reload()
   }
+  async function saveTheme(key) {
+    setLocalPlayer(lp => ({ ...lp, theme_key: key }))
+    setPickingTheme(false)
+    await supabase.from('players').update({ theme_key: key }).eq('id', player.id)
+    reload && reload()
+  }
+
+  // Trend series over last 15 games (oldest → newest).
+  const trend = useMemo(() => {
+    const mine = perfs.filter(p => p.player_id === player.id)
+      .map(p => ({ ...p, match: matches.find(m => m.id === p.match_id) }))
+      .filter(p => p.match)
+      .sort((a, b) => new Date(a.match.played_at) - new Date(b.match.played_at))
+      .slice(-15)
+    return {
+      kda: mine.map(p => (p.kills + p.assists) / Math.max(1, p.deaths)),
+      net: mine.map(p => p.net_worth || 0),
+      dmg: mine.map(p => p.hero_damage || 0),
+      n: mine.length,
+    }
+  }, [perfs, matches, player.id])
   const myPunc = useMemo(() => punc.filter(r => r.player_id === player.id), [punc, player.id])
 
   const puncStats = useMemo(() => {
@@ -78,18 +115,24 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
   }
 
   return (
-    <>
+    <div style={{ background: themeOf(localPlayer).bg, margin: -16, padding: 16, borderRadius: 12 }}>
       <div className="row" style={{ marginBottom: 14 }}>
         <h2 className="grow" style={{ fontSize: 19, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <GodAvatar player={{ ...player, god_key: godKey }} size={34} />
-          <span>{player.name}<span className="small mute" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>{godOf({ ...player, god_key: godKey }).title}{myImpact?.mvps ? ` · 👑 ${myImpact.mvps} MVP${myImpact.mvps > 1 ? 's' : ''}` : ''}</span></span>
+          <GodAvatar player={localPlayer} size={40} />
+          <span>{player.name}<span className="small mute" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>{localPlayer.avatar_url ? '' : godOf(localPlayer).title}{myImpact?.mvps ? `${localPlayer.avatar_url ? '' : ' · '}👑 ${myImpact.mvps} MVP${myImpact.mvps > 1 ? 's' : ''}` : ''}</span></span>
         </h2>
-        <button className="btn sm ghost" onClick={() => setPickingGod(v => !v)}>{pickingGod ? 'Close' : 'Change avatar'}</button>
-        <button className="btn sm ghost" onClick={onClose}>Close</button>
+        <button className="btn sm ghost" onClick={() => { setPickingGod(v => !v); setPickingTheme(false) }}>{pickingGod ? 'Close' : 'Avatar'}</button>
+        <button className="btn sm ghost" onClick={() => { setPickingTheme(v => !v); setPickingGod(false) }}>{pickingTheme ? 'Close' : 'Theme'}</button>
+        <button className="btn sm ghost" onClick={onClose}>‹ Back</button>
       </div>
       {pickingGod && (
         <div className="card" style={{ background: 'var(--bg0)', marginBottom: 14 }}>
-          <GodPicker player={{ ...player, god_key: godKey }} allPlayers={players} onPick={pickGod} />
+          <GodPicker player={localPlayer} allPlayers={players} heroes={heroes} onPick={saveAvatar} />
+        </div>
+      )}
+      {pickingTheme && (
+        <div className="card" style={{ background: 'var(--bg0)', marginBottom: 14 }}>
+          <ThemePicker player={localPlayer} onPick={saveTheme} />
         </div>
       )}
 
@@ -114,6 +157,23 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
               }}>{p.won ? 'W' : 'L'}</span>
           ))}
           <span className="small mute" style={{ marginLeft: 8, alignSelf: 'center' }}>last {form.length} games</span>
+        </div>
+      )}
+
+      {trend.n >= 3 && (
+        <div className="stat-grid" style={{ marginBottom: 16 }}>
+          <div className="stat">
+            <div className="k">KDA trend <span className="formula">last {trend.n} games</span></div>
+            <Spark values={trend.kda} color="var(--gold)" />
+          </div>
+          <div className="stat">
+            <div className="k">Net worth trend</div>
+            <Spark values={trend.net} color="var(--radiant, #3fb950)" />
+          </div>
+          <div className="stat" style={{ gridColumn: '1 / -1' }}>
+            <div className="k">Hero damage trend</div>
+            <Spark values={trend.dmg} color="var(--dire-hi, #f85149)" height={42} />
+          </div>
         </div>
       )}
 
@@ -203,7 +263,7 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
           <div className="stat"><div className="k">No-shows</div><div className="v num">{puncStats.noShows}</div></div>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
