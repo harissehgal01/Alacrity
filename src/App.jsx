@@ -134,7 +134,7 @@ export default function App() {
       {error && <div className="notice err" style={{ marginBottom: 12 }}>{error} <button className="btn sm ghost" onClick={reload}>Retry</button></div>}
       {loading && <div className="mute">Loading…</div>}
 
-      {!loading && tab === 'board' && (
+      {!loading && !openPlayer && tab === 'board' && (
         <>
           <div className="seg">
             <button className={board === 'crew' ? 'on' : ''} onClick={() => setBoard('crew')}>Crew</button>
@@ -149,24 +149,22 @@ export default function App() {
           )}
         </>
       )}
-      {!loading && tab === 'stats' && <Stats players={players} perfs={perfs} matches={matches} openProfile={setOpenPlayer} />}
-      {!loading && tab === 'draft' && <Draft />}
-      {!loading && tab === 'matches' && (
+      {!loading && !openPlayer && tab === 'stats' && <Stats players={players} perfs={perfs} matches={matches} openProfile={setOpenPlayer} />}
+      {!loading && !openPlayer && tab === 'draft' && <Draft />}
+      {!loading && !openPlayer && tab === 'matches' && (
         <>
           {isAdmin ? <><ImportMatch players={players} reload={reload} /><ScreenshotImport players={players} reload={reload} /></> : <div className="notice" style={{ marginBottom: 14 }}>Only the admin can log matches. You can browse match history below.</div>}
           <Matches {...shared} />
         </>
       )}
-      {!loading && tab === 'punctuality' && <Punctuality players={players} isAdmin={isAdmin} />}
-      {!loading && tab === 'roster' && <Roster players={players} reload={reload} isAdmin={isAdmin} punc={punc} />}
+      {!loading && !openPlayer && tab === 'punctuality' && <Punctuality players={players} isAdmin={isAdmin} />}
+      {!loading && !openPlayer && tab === 'roster' && <Roster players={players} reload={reload} isAdmin={isAdmin} punc={punc} />}
 
       {needsClaim && <ClaimIdentity players={players} onDone={refreshProfile} />}
 
       {openPlayer && (
-        <div className="modal-back" onClick={() => setOpenPlayer(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} players={players} seasons={seasons} onClose={() => setOpenPlayer(null)} />
-          </div>
+        <div className="card">
+          <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} players={players} seasons={seasons} reload={reload} onClose={() => setOpenPlayer(null)} />
         </div>
       )}
 
