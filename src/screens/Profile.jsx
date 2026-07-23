@@ -1,18 +1,45 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { aggregate, fmt, impactStats } from '../lib/stats'
+import { aggregate, fmt, impactStats, filterBySeason } from '../lib/stats'
 import { GodAvatar, godOf, GodPicker } from '../lib/gods'
 
-export default function Profile({ player, perfs, matches, punc = [], players = [], onClose }) {
+export default function Profile({ player, perfs: allPerfs, matches: allMatches, punc = [], players = [], seasons = [], onClose }) {
   const [openMatch, setOpenMatch] = useState(null)
   const [pickingGod, setPickingGod] = useState(false)
   const [godKey, setGodKey] = useState(player.god_key || null)
+  const [seasonId, setSeasonId] = useState('all')
+
+  const season = seasons.find(s => s.id === seasonId) || null
+  const { matches, perfs } = useMemo(() => filterBySeason(allMatches, allPerfs, season), [allMatches, allPerfs, season])
+
   const s = useMemo(() => aggregate(perfs.filter(p => p.player_id === player.id)).get(player.id), [perfs, player.id])
   const myImpact = useMemo(() => {
     const all = impactStats(perfs, 1)
     return [...all.mvpLeaders, ...all.mostImpactful].find(r => r.player_id === player.id) ||
       all.mostImpactful.find(r => r.player_id === player.id) || null
   }, [perfs, player.id])
+
+  // Per-hero breakdown for this player, sorted by games played.
+  const heroRows = useMemo(() => {
+    const mine = perfs.filter(p => p.player_id === player.id && p.hero_name)
+    const byHero = new Map()
+    for (const p of mine) {
+      if (!byHero.has(p.hero_name)) byHero.set(p.hero_name, { hero: p.hero_name, games: 0, wins: 0, kills: 0, deaths: 0, assists: 0 })
+      const h = byHero.get(p.hero_name)
+      h.games += 1; if (p.won) h.wins += 1
+      h.kills += p.kills || 0; h.deaths += p.deaths || 0; h.assists += p.assists || 0
+    }
+    return [...byHero.values()].sort((a, b) => b.games - a.games)
+  }, [perfs, player.id])
+
+  // Last 10 games, oldest to newest, for the form strip.
+  const form = useMemo(() => {
+    const mine = perfs.filter(p => p.player_id === player.id)
+      .map(p => ({ ...p, match: matches.find(m => m.id === p.match_id) }))
+      .filter(p => p.match)
+      .sort((a, b) => new Date(a.match.played_at) - new Date(b.match.played_at))
+    return mine.slice(-10)
+  }, [perfs, matches, player.id])
 
   async function pickGod(key) {
     setGodKey(key)
@@ -34,7 +61,7 @@ export default function Profile({ player, perfs, matches, punc = [], players = [
     }
   }, [myPunc])
 
-  const allMatches = useMemo(() => {
+  const allMatchLogs = useMemo(() => {
     const mine = perfs.filter(p => p.player_id === player.id)
     return mine
       .map(p => ({ ...p, match: matches.find(m => m.id === p.match_id) }))
@@ -62,7 +89,31 @@ export default function Profile({ player, perfs, matches, punc = [], players = [
         </div>
       )}
 
-      {!s && <p className="mute">No games logged yet for {player.name}.</p>}
+      {seasons.length > 0 && (
+        <div className="row" style={{ marginBottom: 14, alignItems: 'center' }}>
+          <div className="eyebrow grow">Season</div>
+          <select className="input" style={{ width: 'auto' }} value={seasonId} onChange={e => setSeasonId(e.target.value)}>
+            <option value="all">All time</option>
+            {seasons.map(sn => <option key={sn.id} value={sn.id}>{sn.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      {form.length > 0 && (
+        <div className="row" style={{ gap: 4, marginBottom: 16 }}>
+          {form.map(p => (
+            <span key={p.id} title={`${p.hero_name || ''} · ${p.kills}/${p.deaths}/${p.assists}`}
+              style={{
+                width: 22, height: 22, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 700, color: '#fff',
+                background: p.won ? 'var(--radiant, #3fb950)' : 'var(--dire, #f85149)',
+              }}>{p.won ? 'W' : 'L'}</span>
+          ))}
+          <span className="small mute" style={{ marginLeft: 8, alignSelf: 'center' }}>last {form.length} games</span>
+        </div>
+      )}
+
+      {!s && <p className="mute">No games logged yet for {player.name}{season ? ` in ${season.name}` : ''}.</p>}
 
       {s && (
         <>
@@ -87,12 +138,42 @@ export default function Profile({ player, perfs, matches, punc = [], players = [
             <div className="stat"><div className="k">Avg smoke</div><div className="v num">{fmt.d1(s.avgSmoke)}</div></div>
           </div>
 
+          {heroRows.length > 0 && (
+            <>
+              <h2 style={{ fontSize: 14, marginBottom: 6 }}>By hero</h2>
+              <div style={{ marginBottom: 16, overflowX: 'auto' }}>
+                <table className="small" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr className="mute" style={{ textAlign: 'left' }}>
+                      <th style={{ padding: '4px 8px 4px 0' }}>Hero</th>
+                      <th className="num" style={{ padding: '4px 8px' }}>Games</th>
+                      <th className="num" style={{ padding: '4px 8px' }}>W-L</th>
+                      <th className="num" style={{ padding: '4px 8px' }}>Win%</th>
+                      <th className="num" style={{ padding: '4px 8px' }}>Avg KDA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {heroRows.map(h => (
+                      <tr key={h.hero}>
+                        <td style={{ padding: '4px 8px 4px 0' }}>{h.hero}</td>
+                        <td className="num" style={{ padding: '4px 8px' }}>{h.games}</td>
+                        <td className="num" style={{ padding: '4px 8px' }}>{h.wins}-{h.games - h.wins}</td>
+                        <td className="num" style={{ padding: '4px 8px' }}>{fmt.pct(h.wins / h.games)}</td>
+                        <td className="num" style={{ padding: '4px 8px' }}>{h.kills}/{fmt.d1(h.deaths / h.games)}/{h.assists}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
           <div className="row" style={{ marginBottom: 4 }}>
             <h2 style={{ fontSize: 14, marginBottom: 0 }}>Match logs</h2>
-            <span className="mute small" style={{ marginLeft: 'auto' }}>{allMatches.length} game{allMatches.length === 1 ? '' : 's'} · tap to open</span>
+            <span className="mute small" style={{ marginLeft: 'auto' }}>{allMatchLogs.length} game{allMatchLogs.length === 1 ? '' : 's'} · tap to open</span>
           </div>
           <div className="match-log-scroll">
-            {allMatches.map(p => (
+            {allMatchLogs.map(p => (
               <button key={p.id} className="match-row small match-log-row" onClick={() => setOpenMatch(p)}>
                 <span className={`tag ${p.won ? 'rad' : 'dire'}`}>{p.won ? 'W' : 'L'}</span>
                 <div className="grow">
