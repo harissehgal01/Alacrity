@@ -547,11 +547,15 @@ function Room({ room, setRoom, heroes, user, onExit }) {
                         <div key={k}>
                           <div className="eyebrow" style={{ marginBottom: 6 }}>{seatLabel(k === 'a' ? 'A' : 'B')}</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {sp[k].map(p => (
-                              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                                <GodAvatar player={p} size={20} />
-                                <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                                {p.pos && <span className="mute" style={{ fontSize: 10, marginLeft: 'auto' }}>{roleShort(p.pos)}</span>}
+                            {(sp[k === 'a' ? 'fitA' : 'fitB']?.lineup
+                              ? [...sp[k === 'a' ? 'fitA' : 'fitB'].lineup].sort((x, y) => x.pos - y.pos)
+                              : sp[k].map(p => ({ pos: p.role_pos, player: p }))
+                            ).map(({ pos, player }) => (
+                              <div key={player.id} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <span className="num mute" style={{ fontSize: 11, width: 12, flexShrink: 0 }}>{pos}</span>
+                                <GodAvatar player={player} size={20} />
+                                <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.name}</span>
+                                {player.role_pos !== pos && <span className="mute" style={{ fontSize: 9, marginLeft: 'auto' }}>flex</span>}
                               </div>
                             ))}
                           </div>
