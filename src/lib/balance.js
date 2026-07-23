@@ -1,8 +1,19 @@
 import { impactStats } from './stats'
 
+// Position labels, 1–5.
+export const ROLES = {
+  1: { short: 'POS 1', name: 'Carry', group: 'core' },
+  2: { short: 'POS 2', name: 'Mid', group: 'core' },
+  3: { short: 'POS 3', name: 'Offlane', group: 'core' },
+  4: { short: 'POS 4', name: 'Soft support', group: 'support' },
+  5: { short: 'POS 5', name: 'Hard support', group: 'support' },
+}
+export const roleLabel = pos => ROLES[pos]?.name || null
+export const roleShort = pos => ROLES[pos]?.short || null
+
 // ── Role inference ──────────────────────────────────────────────────────
-// Derived from how someone actually plays, not from a manual tag.
-// Supports buy wards and spend support gold; cores farm.
+// An assigned role_pos always wins. Only players without one get guessed
+// from how they play: supports buy wards and spend support gold, cores farm.
 export function playerProfiles(perfs, players) {
   const by = new Map()
   for (const p of perfs) {
@@ -15,8 +26,12 @@ export function playerProfiles(perfs, players) {
 
   const out = []
   for (const pl of players) {
+    const assigned = pl.role_pos || null
     const rows = by.get(pl.id) || []
-    if (!rows.length) { out.push({ ...pl, games: 0, role: 'flex', rating: 50, unknown: true }); continue }
+    if (!rows.length) {
+      out.push({ ...pl, games: 0, role: assigned ? ROLES[assigned].group : 'flex', pos: assigned, rating: 50, unknown: true })
+      continue
+    }
     const n = rows.length
     const avg = f => rows.reduce((a, r) => a + (f(r) || 0), 0) / n
     const wards = avg(r => (r.obs_placed || 0) + (r.sen_placed || 0))
@@ -25,9 +40,13 @@ export function playerProfiles(perfs, players) {
     const nw = avg(r => r.net_worth)
     const winRate = rows.filter(r => r.won).length / n
     const imp = impactBy.get(pl.id)?.avgImpact ?? null
-    const role = (wards >= 8 || supGold >= 500) ? 'support'
+    const guessed = (wards >= 8 || supGold >= 500) ? 'support'
       : (lh >= 250 || nw >= 22000) ? 'core' : 'flex'
-    out.push({ ...pl, games: n, wards, supGold, lh, nw, winRate, impact: imp, role })
+    out.push({
+      ...pl, games: n, wards, supGold, lh, nw, winRate, impact: imp,
+      pos: assigned,
+      role: assigned ? ROLES[assigned].group : guessed,
+    })
   }
   return rateAll(out)
 }
