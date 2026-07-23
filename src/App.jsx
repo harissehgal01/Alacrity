@@ -6,6 +6,7 @@ import Leaderboard from './screens/Leaderboard'
 import Matches from './screens/Matches'
 import ImportMatch from './screens/ImportMatch'
 import Profile from './screens/Profile'
+import { GodAvatar } from './lib/gods'
 import Punctuality from './screens/Punctuality'
 import Draft from './screens/Draft'
 import Roster from './screens/Roster'
@@ -124,7 +125,9 @@ export default function App() {
         <div className="head-actions">
           <button className="iconbtn" onClick={toggleTheme} aria-label="Toggle theme">{theme === 'dark' ? '☀' : '☾'}</button>
           <button className="iconbtn" onClick={() => setAbout(true)} aria-label="About">i</button>
-          <button className="iconbtn avatar" onClick={() => setMenu(true)} aria-label="Profile">{(profile?.display_name || user.email || '?')[0].toUpperCase()}</button>
+          <button className="iconbtn avatar" onClick={() => { const mine = players.find(p => p.id === profile?.player_id); mine ? setOpenPlayer(mine) : setMenu(true) }} aria-label="Profile">
+            {(() => { const mine = players.find(p => p.id === profile?.player_id); return mine ? <GodAvatar player={mine} size={22} /> : (profile?.display_name || user.email || '?')[0].toUpperCase() })()}
+          </button>
         </div>
       </header>
 
