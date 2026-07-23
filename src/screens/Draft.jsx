@@ -6,6 +6,7 @@ import { SEQUENCE, turnSeconds, phaseLabel } from '../lib/draftSequence'
 import { createRoom, findRoom, claimSeat } from '../lib/room'
 import { playerProfiles, suggestSplits, winShare, roleShort } from '../lib/balance'
 import { GodAvatar } from '../lib/gods'
+import { fetchMetaStats, fetchMatchups, crewHeroRecord, rankHeroes } from '../lib/advisor'
 
 const ATTRS = [['str', 'Strength'], ['agi', 'Agility'], ['int', 'Intelligence'], ['all', 'Universal']]
 
@@ -116,6 +117,11 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const [poolIds, setPoolIds] = useState([])
   const [splits, setSplits] = useState(null)
   const [showBalancer, setShowBalancer] = useState(false)
+  const [metaStats, setMetaStats] = useState(null)
+  const [enemyMatchups, setEnemyMatchups] = useState(new Map())
+  const [showAdvice, setShowAdvice] = useState(true)
+
+  useEffect(() => { fetchMetaStats().then(setMetaStats).catch(() => {}) }, [])
 
   useEffect(() => {
     supabase.from('match_performances').select('*').then(({ data }) => setAllPerfs(data || []))
@@ -420,6 +426,35 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const lastAction = room.actions && room.actions.length ? room.actions[room.actions.length - 1] : null
   const lastActionHero = lastAction ? heroById(lastAction.hero_id) : null
 
+  // ── Draft advisor ──────────────────────────────────────────────
+  const heroIdByName = useMemo(() => new Map(heroes.map(h => [h.name, h.id])), [heroes])
+  const crewRecord = useMemo(() => crewHeroRecord(allPerfs, heroIdByName), [allPerfs, heroIdByName])
+
+  const enemyPickIds = useMemo(() => (room.actions || [])
+    .filter(a => a.type === 'pick' && sideOfTeam(a.team) !== mySide)
+    .map(a => a.hero_id), [room.actions, mySide, cfg.firstPickSide])
+
+  useEffect(() => {
+    if (!enemyPickIds.length) return
+    let alive = true
+    Promise.all(enemyPickIds.map(id => fetchMatchups(id).then(m => [id, m])))
+      .then(pairs => { if (alive) setEnemyMatchups(new Map(pairs)) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [enemyPickIds.join(',')])
+
+  const advice = useMemo(() => {
+    if (stage !== 'drafting' || !myTurn || !heroes.length) return null
+    const availableIds = heroes.map(h => h.id).filter(id => !taken.has(id))
+    const myIds = (teamMeta[mySeatAB]?.playerIds) || []
+    const otherSeat = mySeatAB === 'A' ? 'B' : 'A'
+    const enemyIds = (teamMeta[otherSeat]?.playerIds) || []
+    return rankHeroes({
+      availableIds, metaStats, enemyMatchups, crewRecord,
+      myPlayerIds: myIds, enemyPlayerIds: enemyIds, limit: 5,
+    })
+  }, [stage, myTurn, heroes, taken, metaStats, enemyMatchups, crewRecord, teamMeta, mySeatAB])
+
   /* ── LOBBY: claim seats, then toss ── */
   if (stage === 'lobby') {
     const bothSeated = room.radiant_seat && room.dire_seat
@@ -458,6 +493,27 @@ function Room({ room, setRoom, heroes, user, onExit }) {
             <input className="input" style={{ marginBottom: 8 }} placeholder="Team name (optional)"
               defaultValue={teamMeta[mySeatAB]?.team || ''} onChange={e => setNameDraft(n => ({ ...n, team: e.target.value }))} />
             <button className="btn sm" onClick={saveNames}>Save team name</button>
+          </div>
+        )}
+        {mySeatAB && (
+          <div className="card" style={{ background: 'var(--bg0)', margin: '10px 0' }}>
+            <p className="small mute" style={{ marginTop: 0, marginBottom: 8 }}>
+              Tap crew members to add them to your side. Taken players are locked to the other team.
+            </p>
+            <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+              {roster.filter(p => !captainPlayerIdSet.has(p.id)).map(p => {
+                const otherSeat = mySeatAB === 'A' ? 'B' : 'A'
+                const mine = (teamMeta[mySeatAB]?.playerIds || []).includes(p.id)
+                const theirs = (teamMeta[otherSeat]?.playerIds || []).includes(p.id)
+                return (
+                  <button key={p.id} className={`btn sm ${mine ? '' : 'ghost'}`} disabled={theirs}
+                    style={{ opacity: theirs ? 0.3 : 1, display: 'flex', alignItems: 'center', gap: 6 }}
+                    onClick={() => togglePlayer(p.id)}>
+                    <GodAvatar player={p} size={18} />{p.name}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
         {mySeatAB && (
@@ -547,15 +603,10 @@ function Room({ room, setRoom, heroes, user, onExit }) {
                         <div key={k}>
                           <div className="eyebrow" style={{ marginBottom: 6 }}>{seatLabel(k === 'a' ? 'A' : 'B')}</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {(sp[k === 'a' ? 'fitA' : 'fitB']?.lineup
-                              ? [...sp[k === 'a' ? 'fitA' : 'fitB'].lineup].sort((x, y) => x.pos - y.pos)
-                              : sp[k].map(p => ({ pos: p.role_pos, player: p }))
-                            ).map(({ pos, player }) => (
+                            {sp[k].map(player => (
                               <div key={player.id} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                                <span className="num mute" style={{ fontSize: 11, width: 12, flexShrink: 0 }}>{pos}</span>
                                 <GodAvatar player={player} size={20} />
                                 <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.name}</span>
-                                {player.role_pos !== pos && <span className="mute" style={{ fontSize: 9, marginLeft: 'auto' }}>flex</span>}
                               </div>
                             ))}
                           </div>
@@ -776,6 +827,23 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const seatUserId = seat => (seat === 'A' ? room.radiant_seat : room.dire_seat)
   const radiantCaptain = captains[seatUserId(radiantSeatAB)] || ''
   const direCaptain = captains[seatUserId(direSeatAB)] || ''
+  const squadOf = seat => ((teamMeta[seat]?.playerIds) || []).map(id => roster.find(r => r.id === id)).filter(Boolean)
+  const SquadList = ({ seat }) => {
+    const capId = captainPlayerOf(seat)
+    const cap = capId ? roster.find(r => r.id === capId) : null
+    const list = [...(cap ? [cap] : []), ...squadOf(seat).filter(p => p.id !== capId)]
+    if (!list.length) return null
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+        {list.map(p => (
+          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <GodAvatar player={p} size={16} />
+            <span style={{ fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
   const radiantPlayers = seatPlayers(radiantSeatAB)
   const direPlayers = seatPlayers(direSeatAB)
 
@@ -794,7 +862,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <div className="nm radiant">{radiantLabel}</div>
           <div className="tag">Radiant{cfg.firstPickSide === 'radiant' ? ' · first pick' : ''}</div>
           {radiantCaptain && <div className="small" style={{ marginTop: 3, fontWeight: 600 }}>👑 {radiantCaptain}</div>}
-          {radiantPlayers && <div className="small" style={{ marginTop: 3, fontWeight: 600, lineHeight: 1.4 }}>{radiantPlayers}</div>}
+          <SquadList seat={radiantSeatAB} />
         </div>
         <div className="dt-clock">
           {!done ? (
@@ -814,7 +882,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <div className="nm dire">{direLabel}</div>
           <div className="tag">Dire{cfg.firstPickSide === 'dire' ? ' · first pick' : ''}</div>
           {direCaptain && <div className="small" style={{ marginTop: 3, fontWeight: 600 }}>👑 {direCaptain}</div>}
-          {direPlayers && <div className="small" style={{ marginTop: 3, fontWeight: 600, lineHeight: 1.4 }}>{direPlayers}</div>}
+          <SquadList seat={direSeatAB} />
         </div>
       </div>
 
@@ -833,6 +901,37 @@ function Room({ room, setRoom, heroes, user, onExit }) {
               {selected && <button className="btn sm ghost" onClick={() => setSelected(null)}>Cancel</button>}
               <button className="btn sm" disabled={!selected || paused} onClick={confirmAction}>Confirm</button>
               <button className="btn sm ghost" onClick={undo} disabled={room.actions.length === 0}>Undo</button>
+            </div>
+          )}
+          {myTurn && advice && (
+            <div className="card" style={{ background: 'var(--bg0)', marginBottom: 10, padding: 12 }}>
+              <div className="row" style={{ marginBottom: showAdvice ? 8 : 0 }}>
+                <div className="eyebrow grow">Suggested {current.type === 'ban' ? 'bans' : 'picks'}</div>
+                <button className="btn sm ghost" onClick={() => setShowAdvice(v => !v)}>{showAdvice ? 'Hide' : 'Show'}</button>
+              </div>
+              {showAdvice && (
+                <>
+                  <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                    {(current.type === 'ban' ? advice.bans : advice.picks).map(sug => {
+                      const h = heroById(sug.heroId)
+                      if (!h) return null
+                      return (
+                        <button key={sug.heroId} className="btn sm ghost" onClick={() => setSelected(h)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 9px', textAlign: 'left' }}>
+                          <img src={h.icon} alt="" style={{ width: 22, height: 22, flexShrink: 0 }} />
+                          <span>
+                            <span style={{ display: 'block', fontSize: 12.5 }}>{h.name}</span>
+                            {sug.reasons.length > 0 && <span className="mute" style={{ fontSize: 10 }}>{sug.reasons[0]}</span>}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="small mute" style={{ margin: '8px 0 0', fontSize: 10.5 }}>
+                    Blends public meta win rates, matchups against their draft, and this crew's own record. Suggestions, not gospel.
+                  </p>
+                </>
+              )}
             </div>
           )}
           <input className="input" style={{ marginBottom: 10 }} placeholder="Search heroes…" value={search} onChange={e => setSearch(e.target.value)} />
