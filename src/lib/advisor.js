@@ -108,26 +108,52 @@ export function rankHeroes({
     return { total, meta, counter, comfort: c }
   }
 
-  const picks = availableIds.map(id => {
+  // Two suggestions driven by the matchup and our own record, plus one that's
+  // simply strong in the current meta — so there's always a safe option.
+  const scored = availableIds.map(id => {
     const s = score(id, myPlayerIds)
-    const reasons = []
-    if (s.comfort.games >= 2) reasons.push(`${Math.round(s.comfort.rate * 100)}% in ${s.comfort.games} crew games`)
-    if (s.counter > 0.53) reasons.push('good vs their draft')
-    if (s.meta > 0.52) reasons.push(`${Math.round(s.meta * 100)}% meta`)
-    return { heroId: id, score: s.total, reasons }
-  }).sort((a, b) => b.score - a.score).slice(0, limit)
+    return { heroId: id, ...s }
+  })
 
-  // Bans: what hurts us most — heroes the enemy is comfortable on, and heroes
-  // that are simply strong right now.
-  const bans = availableIds.map(id => {
+  const situational = scored
+    .map(x => ({ ...x, situScore: 0.55 * x.counter + 0.45 * x.comfort.rate + (x.comfort.games >= 2 ? 0.05 : 0) }))
+    .sort((a, b) => b.situScore - a.situScore)
+
+  const reasonsFor = x => {
+    const r = []
+    if (x.comfort.games >= 2) r.push(`${Math.round(x.comfort.rate * 100)}% in ${x.comfort.games} crew games`)
+    if (x.counter > 0.52) r.push('strong vs their draft')
+    if (!r.length && x.meta > 0.5) r.push(`${Math.round(x.meta * 100)}% meta`)
+    return r
+  }
+
+  const picks = []
+  for (const x of situational) {
+    if (picks.length >= 2) break
+    picks.push({ heroId: x.heroId, score: x.situScore, reasons: reasonsFor(x) })
+  }
+  const chosen = new Set(picks.map(p => p.heroId))
+  const metaPick = scored
+    .filter(x => !chosen.has(x.heroId))
+    .sort((a, b) => b.meta - a.meta)[0]
+  if (metaPick) picks.push({ heroId: metaPick.heroId, score: metaPick.meta, reasons: [`${Math.round(metaPick.meta * 100)}% meta pick`] })
+
+  // Bans: two heroes this enemy is genuinely comfortable on, plus one that's
+  // just strong right now.
+  const banScored = availableIds.map(id => {
     const meta = metaOf(id)
     const enemyComfort = comfortFor(id, enemyPlayerIds)
-    const threat = 0.45 * meta + 0.55 * (enemyComfort.games ? enemyComfort.rate : 0.5)
-    const reasons = []
-    if (enemyComfort.games >= 2) reasons.push(`they're ${Math.round(enemyComfort.rate * 100)}% in ${enemyComfort.games} games`)
-    if (meta > 0.53) reasons.push(`${Math.round(meta * 100)}% meta`)
-    return { heroId: id, score: threat, reasons }
-  }).filter(b => b.reasons.length).sort((a, b) => b.score - a.score).slice(0, limit)
+    return { heroId: id, meta, enemyComfort }
+  })
+  const bans = []
+  for (const x of banScored.filter(x => x.enemyComfort.games >= 1).sort((a, b) =>
+    (b.enemyComfort.rate * Math.min(b.enemyComfort.games, 5)) - (a.enemyComfort.rate * Math.min(a.enemyComfort.games, 5)))) {
+    if (bans.length >= 2) break
+    bans.push({ heroId: x.heroId, score: x.enemyComfort.rate, reasons: [`they're ${Math.round(x.enemyComfort.rate * 100)}% in ${x.enemyComfort.games} game${x.enemyComfort.games > 1 ? 's' : ''}`] })
+  }
+  const banned = new Set(bans.map(b => b.heroId))
+  const metaBan = banScored.filter(x => !banned.has(x.heroId)).sort((a, b) => b.meta - a.meta)[0]
+  if (metaBan) bans.push({ heroId: metaBan.heroId, score: metaBan.meta, reasons: [`${Math.round(metaBan.meta * 100)}% meta`] })
 
   return { picks, bans }
 }
