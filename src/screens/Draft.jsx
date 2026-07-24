@@ -991,9 +991,11 @@ function Room({ room, setRoom, heroes, user, onExit }) {
 }
 
 function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId, channel = 'all', setChannel, mySide }) {
-  const CHANNELS = [['all', 'All'], ['radiant', 'Radiant'], ['dire', 'Dire']]
-  const shown = chat.filter(m => (m.channel || 'all') === channel)
-  const locked = channel !== 'all' && mySide && channel !== mySide
+  // You only ever see your own team's channel. Spectators get All and nothing else.
+  const CHANNELS = [['all', 'All'], ...(mySide ? [[mySide, mySide === 'radiant' ? 'Radiant' : 'Dire']] : [])]
+  const active = CHANNELS.some(([id]) => id === channel) ? channel : 'all'
+  const shown = chat.filter(m => (m.channel || 'all') === active)
+  const locked = false
   return (
     <div className="card" style={{ marginTop: 12, padding: 12 }}>
       <div className="row" style={{ marginBottom: 8 }}>
@@ -1001,13 +1003,13 @@ function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId, chann
         {setChannel && (
           <div className="seg" style={{ margin: 0 }}>
             {CHANNELS.map(([id, label]) => (
-              <button key={id} className={channel === id ? 'on' : ''} onClick={() => setChannel(id)}>{label}</button>
+              <button key={id} className={active === id ? 'on' : ''} onClick={() => setChannel(id)}>{label}</button>
             ))}
           </div>
         )}
       </div>
       <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-        {shown.length === 0 && <div className="small mute">No messages in {channel === 'all' ? 'the room' : channel} yet.</div>}
+        {shown.length === 0 && <div className="small mute">No messages in {active === 'all' ? 'the room' : active} yet.</div>}
         {shown.map(m => (
           <div key={m.id} className="small" style={{ lineHeight: 1.4 }}>
             <b style={{ color: m.sender_id === myId ? 'var(--gold)' : 'var(--radiant)' }}>{m.sender_name}</b>
@@ -1021,7 +1023,7 @@ function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId, chann
       </div>
       <div className="row">
         <input className="input grow" disabled={locked}
-          placeholder={locked ? `Spectating — ${channel} only` : channel === 'all' ? 'Message everyone…' : `Message ${channel} team…`}
+          placeholder={active === 'all' ? 'Message everyone…' : `Message your team…`}
           value={chatText}
           onChange={e => setChatText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') sendChat() }} maxLength={500} />
