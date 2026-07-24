@@ -134,6 +134,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const [chat, setChat] = useState([])
   const [chatText, setChatText] = useState('')
   const [chatChannel, setChatChannel] = useState('all')
+  const [chatSeen, setChatSeen] = useState({})
   const chatEnd = useRef(null)
   const applying = useRef(false)
 
@@ -161,6 +162,12 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   }, [room.id])
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat.length])
+
+  // Anything already on screen counts as read.
+  useEffect(() => {
+    const n = chat.filter(m => (m.channel || 'all') === chatChannel).length
+    setChatSeen(prev => (prev[chatChannel] === n ? prev : { ...prev, [chatChannel]: n }))
+  }, [chat, chatChannel])
 
   async function sendChat() {
     const body = chatText.trim()
@@ -527,7 +534,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — waiting for the captains to begin…</div>}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} seen={chatSeen} />
       </div>
     )
   }
@@ -655,7 +662,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — waiting for both captains…</div>}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} seen={chatSeen} />
       </div>
     )
   }
@@ -681,7 +688,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
             </div>
           </>
         ) : <div className="waiting-lock">Waiting for {seatLabel(winner)} to choose pick order…</div>}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} seen={chatSeen} />
       </div>
     )
   }
@@ -784,7 +791,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — captains are drafting teams…</div>}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} seen={chatSeen} />
       </div>
     )
   }
@@ -838,7 +845,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
             </div>
           </>
         ) : <div className="waiting-lock">Waiting for {loserLabel} to choose pick order…</div>)}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} seen={chatSeen} />
       </div>
     )
   }
@@ -985,14 +992,15 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <span><b style={{ textTransform: 'capitalize' }}>{lastAction.side}</b> {lastAction.type === 'ban' ? 'banned' : 'picked'} <b>{lastActionHero.name}</b></span>
         </div>
       )}
-      <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
+      <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} seen={chatSeen} />
     </div>
   )
 }
 
-function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId, channel = 'all', setChannel, mySide }) {
+function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId, channel = 'all', setChannel, mySide, seen }) {
   // You only ever see your own team's channel. Spectators get All and nothing else.
   const CHANNELS = [['all', 'All'], ...(mySide ? [[mySide, mySide === 'radiant' ? 'Radiant' : 'Dire']] : [])]
+  const unreadIn = id => Math.max(0, chat.filter(m => (m.channel || 'all') === id).length - (seen?.[id] || 0))
   const active = CHANNELS.some(([id]) => id === channel) ? channel : 'all'
   const shown = chat.filter(m => (m.channel || 'all') === active)
   const locked = false
@@ -1002,9 +1010,22 @@ function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId, chann
         <div className="eyebrow grow">Room chat</div>
         {setChannel && (
           <div className="seg" style={{ margin: 0 }}>
-            {CHANNELS.map(([id, label]) => (
-              <button key={id} className={active === id ? 'on' : ''} onClick={() => setChannel(id)}>{label}</button>
-            ))}
+            {CHANNELS.map(([id, label]) => {
+              const unread = id === active ? 0 : unreadIn(id)
+              return (
+                <button key={id} className={active === id ? 'on' : ''} onClick={() => setChannel(id)}
+                  style={{ position: 'relative', paddingRight: unread ? 20 : undefined }}>
+                  {label}
+                  {unread > 0 && (
+                    <span style={{
+                      position: 'absolute', top: 1, right: 2, minWidth: 15, height: 15, padding: '0 3px',
+                      borderRadius: 8, background: 'var(--gold)', color: '#1a1410',
+                      fontSize: 9.5, fontWeight: 800, lineHeight: '15px', textAlign: 'center',
+                    }}>{unread > 9 ? '9+' : unread}</span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         )}
       </div>

@@ -182,15 +182,22 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
             </div>
           ))}
 
-          <h2 style={{ fontSize: 14, marginTop: 20 }}>Most banned</h2>
-          {bans.length === 0 && <p className="mute small">No completed drafts yet — bans show up here once a draft room finishes.</p>}
-          {bans.slice(0, 10).map((b, i) => (
-            <div key={b.hero} className="match-row">
-              <span className="mute num" style={{ width: 22 }}>{i + 1}</span>
-              <div className="grow">{b.hero}</div>
-              <span className="mute num">{b.count} ban{b.count === 1 ? '' : 's'}</span>
-            </div>
-          ))}
+          <div className="row" style={{ marginTop: 20, alignItems: 'baseline' }}>
+            <h2 className="grow" style={{ fontSize: 14, marginBottom: 0 }}>Most banned</h2>
+            {bans.drafts > 0 && <span className="mute small num">from {bans.drafts} finished draft{bans.drafts === 1 ? '' : 's'}</span>}
+          </div>
+          {bans.length === 0 && <p className="mute small">No finished drafts yet — bans appear once a draft room runs all the way through.</p>}
+          {bans.slice(0, 10).map((b, i) => {
+            const h = heroes.find(x => x.name === b.hero)
+            return (
+              <div key={b.hero} className="match-row">
+                <span className="mute num" style={{ width: 22 }}>{i + 1}</span>
+                {h && <img src={h.img} alt="" style={{ width: 34, height: 19, objectFit: 'cover', borderRadius: 3, marginRight: 6 }} />}
+                <div className="grow">{b.hero}</div>
+                <span className="mute num">{b.count} · {Math.round(b.pct * 100)}%</span>
+              </div>
+            )
+          })}
         </>
       )}
 
