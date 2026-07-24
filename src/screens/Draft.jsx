@@ -133,6 +133,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   }, [])
   const [chat, setChat] = useState([])
   const [chatText, setChatText] = useState('')
+  const [chatChannel, setChatChannel] = useState('all')
   const chatEnd = useRef(null)
   const applying = useRef(false)
 
@@ -167,7 +168,8 @@ function Room({ room, setRoom, heroes, user, onExit }) {
     setChatText('')
     const senderName = captains[user.id] || nameOf(user)
     const { data } = await supabase.from('draft_messages')
-      .insert({ room_id: room.id, sender_id: user.id, sender_name: senderName, body }).select().single()
+      .insert({ room_id: room.id, sender_id: user.id, sender_name: senderName, body, channel: chatChannel })
+      .select().single()
     if (data) setChat(c => c.some(m => m.id === data.id) ? c : [...c, data])
   }
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 400); return () => clearInterval(t) }, [])
@@ -525,7 +527,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — waiting for the captains to begin…</div>}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
       </div>
     )
   }
@@ -653,7 +655,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — waiting for both captains…</div>}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
       </div>
     )
   }
@@ -679,7 +681,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
             </div>
           </>
         ) : <div className="waiting-lock">Waiting for {seatLabel(winner)} to choose pick order…</div>}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
       </div>
     )
   }
@@ -782,7 +784,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           </div>
         )}
         {!mySeatAB && <div className="waiting-lock">Spectating — captains are drafting teams…</div>}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
       </div>
     )
   }
@@ -836,7 +838,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
             </div>
           </>
         ) : <div className="waiting-lock">Waiting for {loserLabel} to choose pick order…</div>)}
-        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+        <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
       </div>
     )
   }
@@ -850,15 +852,16 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   const radiantCaptain = captains[seatUserId(radiantSeatAB)] || ''
   const direCaptain = captains[seatUserId(direSeatAB)] || ''
   const squadOf = seat => ((teamMeta[seat]?.playerIds) || []).map(id => roster.find(r => r.id === id)).filter(Boolean)
-  const SquadList = ({ seat }) => {
+  const SquadList = ({ seat, align = 'left' }) => {
     const capId = captainPlayerOf(seat)
     const cap = capId ? roster.find(r => r.id === capId) : null
     const list = [...(cap ? [cap] : []), ...squadOf(seat).filter(p => p.id !== capId)]
     if (!list.length) return null
+    const right = align === 'right'
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6, alignItems: right ? 'flex-end' : 'flex-start' }}>
         {list.map(p => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, flexDirection: right ? 'row-reverse' : 'row' }}>
             <GodAvatar player={p} size={16} />
             <span style={{ fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
           </div>
@@ -904,7 +907,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <div className="nm dire">{direLabel}</div>
           <div className="tag">Dire{cfg.firstPickSide === 'dire' ? ' · first pick' : ''}</div>
           {direCaptain && <div className="small" style={{ marginTop: 3, fontWeight: 600 }}>👑 {direCaptain}</div>}
-          <SquadList seat={direSeatAB} />
+          <SquadList seat={direSeatAB} align="right" />
         </div>
       </div>
 
@@ -982,18 +985,30 @@ function Room({ room, setRoom, heroes, user, onExit }) {
           <span><b style={{ textTransform: 'capitalize' }}>{lastAction.side}</b> {lastAction.type === 'ban' ? 'banned' : 'picked'} <b>{lastActionHero.name}</b></span>
         </div>
       )}
-      <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} />
+      <ChatPanel chat={chat} chatText={chatText} setChatText={setChatText} sendChat={sendChat} chatEnd={chatEnd} myId={user.id} channel={chatChannel} setChannel={setChatChannel} mySide={mySide} />
     </div>
   )
 }
 
-function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId }) {
+function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId, channel = 'all', setChannel, mySide }) {
+  const CHANNELS = [['all', 'All'], ['radiant', 'Radiant'], ['dire', 'Dire']]
+  const shown = chat.filter(m => (m.channel || 'all') === channel)
+  const locked = channel !== 'all' && mySide && channel !== mySide
   return (
     <div className="card" style={{ marginTop: 12, padding: 12 }}>
-      <div className="eyebrow" style={{ marginBottom: 8 }}>Room chat</div>
+      <div className="row" style={{ marginBottom: 8 }}>
+        <div className="eyebrow grow">Room chat</div>
+        {setChannel && (
+          <div className="seg" style={{ margin: 0 }}>
+            {CHANNELS.map(([id, label]) => (
+              <button key={id} className={channel === id ? 'on' : ''} onClick={() => setChannel(id)}>{label}</button>
+            ))}
+          </div>
+        )}
+      </div>
       <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-        {chat.length === 0 && <div className="small mute">No messages yet. Say hi.</div>}
-        {chat.map(m => (
+        {shown.length === 0 && <div className="small mute">No messages in {channel === 'all' ? 'the room' : channel} yet.</div>}
+        {shown.map(m => (
           <div key={m.id} className="small" style={{ lineHeight: 1.4 }}>
             <b style={{ color: m.sender_id === myId ? 'var(--gold)' : 'var(--radiant)' }}>{m.sender_name}</b>
             <span className="mute num" style={{ marginLeft: 6, fontSize: 10 }}>
@@ -1005,10 +1020,12 @@ function ChatPanel({ chat, chatText, setChatText, sendChat, chatEnd, myId }) {
         <div ref={chatEnd} />
       </div>
       <div className="row">
-        <input className="input grow" placeholder="Message the room…" value={chatText}
+        <input className="input grow" disabled={locked}
+          placeholder={locked ? `Spectating — ${channel} only` : channel === 'all' ? 'Message everyone…' : `Message ${channel} team…`}
+          value={chatText}
           onChange={e => setChatText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') sendChat() }} maxLength={500} />
-        <button className="btn sm" onClick={sendChat} disabled={!chatText.trim()}>Send</button>
+        <button className="btn sm" onClick={sendChat} disabled={!chatText.trim() || locked}>Send</button>
       </div>
     </div>
   )
