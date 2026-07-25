@@ -14,12 +14,14 @@ import PublicLeaderboard from './screens/PublicLeaderboard'
 import SelfLog from './screens/SelfLog'
 import ScreenshotImport from './screens/ScreenshotImport'
 import Stats from './screens/Stats'
+import SeasonRecap from './screens/SeasonRecap'
 import ClaimIdentity from './screens/ClaimIdentity'
 import { usePresence } from './lib/presence'
 
 const TABS = [
   ['board', 'Leaderboard'],
   ['stats', 'Stats'],
+  ['recap', 'Recap'],
   ['draft', 'Draft'],
   ['matches', 'Matches'],
   ['punctuality', 'Punctuality'],
@@ -157,6 +159,7 @@ export default function App() {
         </>
       )}
       {!loading && !openPlayer && tab === 'stats' && <Stats players={players} perfs={perfs} matches={matches} openProfile={setOpenPlayer} isAdmin={isAdmin} />}
+      {!loading && !openPlayer && tab === 'recap' && <SeasonRecap players={players} perfs={perfs} matches={matches} seasons={seasons} openProfile={setOpenPlayer} />}
       {!loading && !openPlayer && tab === 'draft' && <Draft />}
       {!loading && !openPlayer && tab === 'matches' && (
         <>
