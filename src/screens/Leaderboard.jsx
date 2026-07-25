@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { aggregate, fmt } from '../lib/stats'
-export default function Leaderboard({ players, perfs, openProfile, online = new Set(), profiles = [] }) {
+import { puncByPlayer, tierColor } from '../lib/punctuality'
+export default function Leaderboard({ players, perfs, punc = [], openProfile, online = new Set(), profiles = [] }) {
   const [sortBy, setSortBy] = useState('winrate')
   const stats = useMemo(() => aggregate(perfs), [perfs])
+  const puncMap = useMemo(() => puncByPlayer(punc), [punc])
   const onlinePlayerIds = useMemo(() => {
     const s = new Set()
     for (const pr of profiles) if (pr.player_id && online.has(pr.id)) s.add(pr.player_id)
@@ -15,10 +17,14 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
       if (sortBy === 'wins') return b.s.wins - a.s.wins
       if (sortBy === 'kda') return b.s.kda - a.s.kda
       if (sortBy === 'damage') return (b.s.avgHeroDamage || 0) - (a.s.avgHeroDamage || 0)
+      if (sortBy === 'punctual') {
+        const pa = puncMap.get(a.player.id), pb = puncMap.get(b.player.id)
+        return (pb?.onTimeRate ?? -1) - (pa?.onTimeRate ?? -1) || (pa?.avg ?? 999) - (pb?.avg ?? 999)
+      }
       return 0
     })
     return withStats
-  }, [players, stats, sortBy])
+  }, [players, stats, sortBy, puncMap])
 
   const leaders = useMemo(() => {
     const named = id => players.find(p => p.id === id)?.name || '—'
@@ -36,6 +42,16 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
     }
     return { mostKills, topGameDmg, bestKda, topNetWorth, topBuilding, mostAssists, mostVersatile, topCamps, topDewards }
   }, [stats, players])
+
+  const mostPunctual = useMemo(() => {
+    let best = null
+    for (const [id, pu] of puncMap) {
+      if (!pu || pu.sessions < 3) continue
+      if (!best || pu.onTimeRate > best.rate || (pu.onTimeRate === best.rate && pu.avg < best.avg))
+        best = { who: players.find(p => p.id === id)?.name || '—', rate: pu.onTimeRate, avg: pu.avg }
+    }
+    return best
+  }, [puncMap, players])
 
   if (rows.length === 0) {
     return (
@@ -55,6 +71,7 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
         {leaders.topBuilding && <div className="leader" title={leaders.topBuilding.hero ? `as ${leaders.topBuilding.hero}` : ''}><div className="k">Building dmg</div><div className="v num">{fmt.n(leaders.topBuilding.v)}</div><div className="who">{leaders.topBuilding.who}</div></div>}
         {leaders.mostAssists && <div className="leader" title={leaders.mostAssists.hero ? `as ${leaders.mostAssists.hero}` : ''}><div className="k">Most assists</div><div className="v num">{leaders.mostAssists.v}</div><div className="who">{leaders.mostAssists.who}</div></div>}
         {leaders.mostVersatile && <div className="leader" title="Distinct heroes played"><div className="k">Versatility</div><div className="v num">{leaders.mostVersatile.v}</div><div className="who">{leaders.mostVersatile.who}</div></div>}
+        {mostPunctual && <div className="leader" title="Best on-time rate (min 3 sessions)"><div className="k">Most punctual</div><div className="v num">{fmt.pct(mostPunctual.rate)}</div><div className="who">{mostPunctual.who}</div></div>}
       </div>
 
       <div className="row" style={{ marginBottom: 12 }}>
@@ -64,6 +81,7 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
           <option value="wins">Total wins</option>
           <option value="kda">KDA</option>
           <option value="damage">Avg hero damage</option>
+          <option value="punctual">Punctuality</option>
         </select>
       </div>
 
@@ -80,6 +98,7 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
                 {s.wins}W – {s.losses}L · {s.games} games
                 {s.streak && s.streak.n >= 3 && <> · {s.streak.n}{s.streak.kind}</>}
                 <span className="pips">{s.form.map((w, j) => <span key={j} className={`pip ${w ? 'w' : 'l'}`} />)}</span>
+                {(() => { const pu = puncMap.get(player.id); return pu ? <span style={{ marginLeft: 6, color: tierColor[pu.tier], fontWeight: 600 }}>⏰ {fmt.pct(pu.onTimeRate || 0)}</span> : null })()}
               </div>
             </div>
             <div className="right">

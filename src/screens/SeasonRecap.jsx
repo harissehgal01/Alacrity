@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { filterBySeason, heroStats, fmt } from '../lib/stats'
 import { seasonTotals, seasonAwards, duoSynergy, singleGameRecords, playerCards } from '../lib/recap'
+import { puncByPlayer, puncInSeason, tierColor } from '../lib/punctuality'
 import { GodAvatar, themeOf } from '../lib/gods'
 
 const hms = s => {
@@ -87,6 +88,7 @@ async function renderCardImage(card, season) {
       signature ? ['Signature hero', `${signature} ×${card.signatureGames}`] : null,
       ['Hero pool', `${s.versatility} heroes`],
       bestGame ? ['Best game', `${bestGame.kills} kills · ${bestGame.hero}`] : null,
+      card.punc ? ['Punctuality', `${Math.round((card.punc.onTimeRate || 0) * 100)}% on time · ${Math.round(card.punc.avg || 0)}m late`] : null,
     ].filter(Boolean)
     let ry = 706
     rows.forEach(([k, v]) => {
@@ -103,7 +105,7 @@ async function renderCardImage(card, season) {
   } catch { return null }
 }
 
-export default function SeasonRecap({ players, perfs, matches, seasons = [], openProfile }) {
+export default function SeasonRecap({ players, perfs, matches, punc = [], seasons = [], openProfile }) {
   const withGames = seasons.filter(se => matches.some(m => {
     const t = new Date(m.played_at).getTime()
     return t >= new Date(se.starts_at).getTime() && t <= new Date(se.ends_at).getTime()
@@ -117,8 +119,9 @@ export default function SeasonRecap({ players, perfs, matches, seasons = [], ope
   const playerOf = id => players.find(p => p.id === id)
 
   const totals = useMemo(() => seasonTotals(sMatches), [sMatches])
-  const { awards, agg, signatureHero } = useMemo(() => seasonAwards(sPerfs, players), [sPerfs, players])
-  const cards = useMemo(() => playerCards(sPerfs, players, awards, agg, signatureHero), [sPerfs, players, awards, agg, signatureHero])
+  const puncMap = useMemo(() => puncByPlayer(puncInSeason(punc, season)), [punc, season])
+  const { awards, agg, signatureHero } = useMemo(() => seasonAwards(sPerfs, players, puncMap), [sPerfs, players, puncMap])
+  const cards = useMemo(() => playerCards(sPerfs, players, awards, agg, signatureHero, puncMap), [sPerfs, players, awards, agg, signatureHero, puncMap])
   const duos = useMemo(() => duoSynergy(sMatches, sPerfs), [sMatches, sPerfs])
   const recs = useMemo(() => singleGameRecords(sPerfs), [sPerfs])
 
@@ -377,6 +380,7 @@ function PlayerCard({ card, season, onOpen }) {
           {signature && <div className="row"><span className="mute grow">Signature hero</span><span>{signature} <span className="mute num">×{card.signatureGames}</span></span></div>}
           <div className="row"><span className="mute grow">Hero pool</span><span className="num">{s.versatility} heroes</span></div>
           {bestGame && <div className="row"><span className="mute grow">Best game</span><span className="num">{bestGame.kills} kills · {bestGame.hero}</span></div>}
+          {card.punc && <div className="row"><span className="mute grow">Punctuality</span><span className="num" style={{ color: tierColor[card.punc.tier] }}>{fmt.pct(card.punc.onTimeRate || 0)} on time · {Math.round(card.punc.avg || 0)}m late</span></div>}
           {s.streak && s.streak.n > 1 && <div className="row"><span className="mute grow">Ended on</span><span className="num" style={{ color: s.streak.kind === 'W' ? 'var(--radiant)' : 'var(--dire)' }}>{s.streak.n}{s.streak.kind} streak</span></div>}
         </div>
       </div>

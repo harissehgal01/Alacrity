@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { fetchHeroes } from '../lib/opendota'
 import { aggregate, heroStats, funFacts, fmt, impactStats, filterBySeason, versusRecord, togetherRecord } from '../lib/stats'
 import { GodAvatar } from '../lib/gods'
+import { puncByPlayer, puncInSeason } from '../lib/punctuality'
 
 // Per-game record keys → the performance column that sets them.
 const MAX_FIELD = {
@@ -44,11 +45,17 @@ const CATEGORIES = [
     { key: 'wins', label: 'Total wins', fmt: v => v },
     { key: 'games', label: 'Games played', fmt: v => v },
   ]},
+  { group: 'Punctuality', options: [
+    { key: 'puncOnTime', label: 'On-time rate', fmt: fmt.pct },
+    { key: 'puncAvgLate', label: 'Avg minutes late', fmt: fmt.d1 },
+    { key: 'puncSessions', label: 'Sessions attended', fmt: v => v },
+    { key: 'noShows', label: 'No-shows', fmt: v => v },
+  ]},
 ]
 const ALL_OPTIONS = CATEGORIES.flatMap(g => g.options)
 const VIEWS = [['players', 'Players'], ['heroes', 'Heroes'], ['rivalries', 'Rivalries'], ['facts', 'Fun facts']]
 
-export default function Stats({ players, perfs: allPerfs, matches: allMatches, openProfile, isAdmin }) {
+export default function Stats({ players, perfs: allPerfs, matches: allMatches, punc = [], openProfile, isAdmin }) {
   const [view, setView] = useState('players')
   const [statKey, setStatKey] = useState('maxKills')
   const [heroSort, setHeroSort] = useState('games')
@@ -90,14 +97,23 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
   const active = ALL_OPTIONS.find(o => o.key === statKey)
 
   const mvpCount = useMemo(() => new Map(impact.mvpLeaders.map(r => [r.player_id, r.mvps])), [impact])
+  const puncMap = useMemo(() => puncByPlayer(puncInSeason(punc, season)), [punc, season])
   const rows = useMemo(() => {
     const list = players.map(p => {
       const base = stats.get(p.id)
-      return { player: p, s: base ? { ...base, mvps: mvpCount.get(p.id) || 0 } : base }
+      if (!base) return { player: p, s: base }
+      const pu = puncMap.get(p.id)
+      return { player: p, s: { ...base,
+        mvps: mvpCount.get(p.id) || 0,
+        puncOnTime: pu ? pu.onTimeRate : null,
+        puncAvgLate: pu ? pu.avg : null,
+        puncSessions: pu ? pu.sessions : null,
+        noShows: pu ? pu.noShows : null,
+      } }
     }).filter(r => r.s && r.s.games > 0 && r.s[statKey] != null)
     list.sort((a, b) => b.s[statKey] - a.s[statKey])
     return list
-  }, [players, stats, statKey, mvpCount])
+  }, [players, stats, statKey, mvpCount, puncMap])
 
   const hStats = useMemo(() => heroStats(perfs), [perfs])
   const heroRows = useMemo(() => {

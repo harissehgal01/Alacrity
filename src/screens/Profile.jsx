@@ -4,6 +4,7 @@ import { aggregate, fmt, impactStats, filterBySeason, mvpByMatch } from '../lib/
 import { fetchHeroes } from '../lib/opendota'
 import { GodAvatar, godOf, GodPicker, ThemePicker, themeOf } from '../lib/gods'
 import { ROLES, roleLabel } from '../lib/balance'
+import { puncSummary, tierLabel, tierColor } from '../lib/punctuality'
 
 // Match Ribbon — interactive area chart over recent games.
 // Dots are win/loss colored; hover/tap shows a tooltip with hero + numbers.
@@ -305,7 +306,9 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
         </>
       )}
 
-      <h2 style={{ fontSize: 14, marginTop: 18 }}>Punctuality</h2>
+      <h2 style={{ fontSize: 14, marginTop: 18, display: 'flex', alignItems: 'center', gap: 8 }}>Punctuality
+        {(() => { const t = puncSummary(myPunc); return t ? <span className="tag" style={{ color: tierColor[t.tier], borderColor: 'currentColor' }}>{tierLabel[t.tier]}</span> : null })()}
+      </h2>
       <p className="small mute" style={{ marginTop: 2 }}>Attendance only — never affects the leaderboard.</p>
       {myPunc.length === 0 && <p className="mute small">No sessions recorded.</p>}
       {myPunc.length > 0 && (
