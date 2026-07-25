@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchHeroes } from '../lib/opendota'
-import { aggregate, heroStats, banStats, funFacts, fmt, impactStats, filterBySeason, versusRecord, togetherRecord } from '../lib/stats'
+import { aggregate, heroStats, funFacts, fmt, impactStats, filterBySeason, versusRecord, togetherRecord } from '../lib/stats'
 import { GodAvatar } from '../lib/gods'
 
 // Per-game record keys → the performance column that sets them.
@@ -52,7 +52,6 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
   const [statKey, setStatKey] = useState('maxKills')
   const [heroSort, setHeroSort] = useState('games')
   const [heroes, setHeroes] = useState([])
-  const [draftRooms, setDraftRooms] = useState([])
   const [seasons, setSeasons] = useState([])
   const [seasonId, setSeasonId] = useState('all')
   const [newSeason, setNewSeason] = useState(null)
@@ -61,8 +60,6 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
 
   useEffect(() => { fetchHeroes().then(setHeroes).catch(() => {}) }, [])
   useEffect(() => {
-    supabase.from('draft_rooms').select('actions').eq('status', 'completed')
-      .then(({ data }) => setDraftRooms(data || []))
     supabase.from('seasons').select('*').order('starts_at')
       .then(({ data }) => setSeasons(data || []))
   }, [])
@@ -103,7 +100,6 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
     list.sort((a, b) => (heroSort === 'games' ? b.games - a.games : b.winRate - a.winRate))
     return list
   }, [hStats, heroSort])
-  const bans = useMemo(() => banStats(draftRooms, heroes), [draftRooms, heroes])
   const facts = useMemo(() => funFacts(matches, perfs, players), [matches, perfs, players])
   const signatures = useMemo(() => players.map(p => ({ player: p, sig: hStats.signatureHero.get(p.id) })).filter(r => r.sig), [players, hStats])
   const cursedHero = heroRows.length ? [...heroRows].sort((a, b) => a.winRate - b.winRate)[0] : null
@@ -181,23 +177,6 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
               <div className="right"><div className="lb-wr num">{fmt.pct(h.winRate)}</div></div>
             </div>
           ))}
-
-          <div className="row" style={{ marginTop: 20, alignItems: 'baseline' }}>
-            <h2 className="grow" style={{ fontSize: 14, marginBottom: 0 }}>Most banned</h2>
-            {bans.drafts > 0 && <span className="mute small num">from {bans.drafts} finished draft{bans.drafts === 1 ? '' : 's'}</span>}
-          </div>
-          {bans.length === 0 && <p className="mute small">No finished drafts yet — bans appear once a draft room runs all the way through.</p>}
-          {bans.slice(0, 10).map((b, i) => {
-            const h = heroes.find(x => x.name === b.hero)
-            return (
-              <div key={b.hero} className="match-row">
-                <span className="mute num" style={{ width: 22 }}>{i + 1}</span>
-                {h && <img src={h.img} alt="" style={{ width: 34, height: 19, objectFit: 'cover', borderRadius: 3, marginRight: 6 }} />}
-                <div className="grow">{b.hero}</div>
-                <span className="mute num">{b.count} · {Math.round(b.pct * 100)}%</span>
-              </div>
-            )
-          })}
         </>
       )}
 

@@ -275,7 +275,7 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
                         <td className="num" style={{ padding: '4px 8px' }}>{h.games}</td>
                         <td className="num" style={{ padding: '4px 8px' }}>{h.wins}-{h.games - h.wins}</td>
                         <td className="num" style={{ padding: '4px 8px' }}>{fmt.pct(h.wins / h.games)}</td>
-                        <td className="num" style={{ padding: '4px 8px' }}>{h.kills}/{fmt.d1(h.deaths / h.games)}/{h.assists}</td>
+                        <td className="num" style={{ padding: '4px 8px' }}>{fmt.d1(h.kills / h.games)}/{fmt.d1(h.deaths / h.games)}/{fmt.d1(h.assists / h.games)}</td>
                       </tr>
                     ))}
                   </tbody>
