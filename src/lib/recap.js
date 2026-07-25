@@ -3,19 +3,33 @@
 // so numbers always match the rest of the app. Roast energy: high.
 import { aggregate, heroStats, impactStats } from './stats'
 
+// ── Sessions ──────────────────────────────────────────────────────────────
+// A "session" is one continuous sitting. Because games run late into the early
+// morning, counting calendar dates overcounts (one night splits across two
+// dates). Instead we sort by time and start a new session only when the gap to
+// the previous game exceeds `gapHours`. This is midnight-safe by construction.
+export function sessionCount(matches, gapHours = 6) {
+  const times = matches.map(m => new Date(m.played_at).getTime()).filter(t => !isNaN(t)).sort((a, b) => a - b)
+  if (!times.length) return 0
+  let sessions = 1
+  for (let i = 1; i < times.length; i++) {
+    if (times[i] - times[i - 1] > gapHours * 3600000) sessions += 1
+  }
+  return sessions
+}
+
 // ── Season headline totals ────────────────────────────────────────────────
 export function seasonTotals(matches) {
   const withDur = matches.filter(m => m.duration_seconds != null)
   const seconds = withDur.reduce((s, m) => s + m.duration_seconds, 0)
   const kills = matches.reduce((s, m) => s + (m.radiant_score || 0) + (m.dire_score || 0), 0)
-  const nights = new Set(matches.map(m => new Date(m.played_at).toDateString())).size
   return {
     games: matches.length,
     kills,
     seconds,
     hours: seconds / 3600,
     avgSeconds: withDur.length ? seconds / withDur.length : 0,
-    nights,
+    sessions: sessionCount(matches),
   }
 }
 
@@ -182,11 +196,13 @@ export function playerCards(perfs, players, awards, agg, signatureHero, minGames
   const awardByPlayer = new Map()
   for (const a of awards) if (!awardByPlayer.has(a.winnerId)) awardByPlayer.set(a.winnerId, a)
 
-  const archetype = s => {
-    if (s.avgAssists > s.avgKills * 1.4) return 'The Support'
-    if (s.avgGpm != null && s.avgGpm >= 550) return 'The Farmer'
-    if (s.avgKills >= 8) return 'The Fragger'
-    if (s.kda >= 3.5) return 'The Slippery One'
+  // Title falls back to the player's actual roster role, not a stat guess —
+  // in this crew even hard carries rack big assists in teamfights.
+  const roleTitle = { 1: 'The Carry', 2: 'The Midlaner', 3: 'The Offlaner', 4: 'The Support', 5: 'The Hard Support' }
+  const titleFor = (p, s) => {
+    if (p.role_pos && roleTitle[p.role_pos]) return roleTitle[p.role_pos]
+    if (s.avgGpm != null && s.avgGpm >= 500) return 'The Carry'
+    if (s.avgAssists > s.avgKills * 1.5) return 'The Support'
     return 'The Role Player'
   }
 
@@ -201,7 +217,7 @@ export function playerCards(perfs, players, awards, agg, signatureHero, minGames
       s,
       signature: sig ? sig.hero : null,
       signatureGames: sig ? sig.count : 0,
-      title: award ? award.title : archetype(s),
+      title: award ? award.title : titleFor(p, s),
       titleEmoji: award ? award.emoji : '🎮',
       isAward: !!award,
       bestGame: s.maxKills ? { kills: s.maxKills, hero: s.maxKillsHero } : null,
