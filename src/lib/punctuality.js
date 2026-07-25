@@ -16,3 +16,27 @@ export function puncSummary(rows) {
 }
 
 export const tierLabel = { good: 'Reliable', mid: 'Sometimes late', bad: 'Often late' }
+export const tierColor = { good: 'var(--radiant)', mid: 'var(--gold)', bad: 'var(--dire)' }
+
+// Map of player_id -> puncSummary, for surfacing punctuality across the app.
+export function puncByPlayer(rows) {
+  const by = new Map()
+  for (const r of rows || []) {
+    if (!r.player_id) continue
+    if (!by.has(r.player_id)) by.set(r.player_id, [])
+    by.get(r.player_id).push(r)
+  }
+  const out = new Map()
+  for (const [id, rs] of by) out.set(id, puncSummary(rs))
+  return out
+}
+
+// Restrict punctuality rows to a season window (by session_date).
+export function puncInSeason(rows, season) {
+  if (!season) return rows || []
+  const s = new Date(season.starts_at).getTime(), e = new Date(season.ends_at).getTime()
+  return (rows || []).filter(r => {
+    const t = new Date(r.session_date).getTime()
+    return !isNaN(t) && t >= s && t <= e
+  })
+}

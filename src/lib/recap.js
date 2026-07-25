@@ -88,7 +88,7 @@ export function duoSynergy(matches, perfs, minGames = 6) {
 // ── Awards ─────────────────────────────────────────────────────────────────
 // Each award ranks candidates and picks the top one not already awarded, so
 // winners are spread across the crew. Marquee awards run first.
-export function seasonAwards(perfs, players) {
+export function seasonAwards(perfs, players, puncMap = new Map()) {
   const crewPerfs = perfs.filter(p => p.player_id)
   const agg = aggregate(crewPerfs)
   const { signatureHero } = heroStats(crewPerfs)
@@ -188,11 +188,29 @@ export function seasonAwards(perfs, players) {
       `Perfectly balanced, as all things should be. Wins exactly as often as he loses. A human coin flip.`)
   }
 
+  // 10. The Early Bird — best on-time rate (min 3 sessions)
+  // 11. Always Late — highest average minutes late (min 3 sessions)
+  {
+    const puncList = [...puncMap.entries()]
+      .filter(([id, pu]) => pu && pu.sessions >= 3 && players.some(p => p.id === id))
+      .map(([id, pu]) => ({ id, pu }))
+    if (puncList.length) {
+      const early = [...puncList].sort((a, b) => (b.pu.onTimeRate - a.pu.onTimeRate) || (a.pu.avg - b.pu.avg))[0]
+      push('⏰', 'The Early Bird', early,
+        `${pct(early.pu.onTimeRate || 0)} on time · ${Math.round(early.pu.avg || 0)}m avg late`,
+        `In the lobby before the timer, every single time. Nobody understands it, but the draft actually starts on schedule when he's around.`)
+      const late = [...puncList].sort((a, b) => b.pu.avg - a.pu.avg)[0]
+      push('🐌', 'Always Late', late,
+        `${Math.round(late.pu.avg || 0)}m late on average · only ${pct(late.pu.onTimeRate || 0)} on time`,
+        `The draft starts, picks get locked, towers fall, and then he loads in. Being ${Math.round(late.pu.avg || 0)} minutes late isn't a habit, it's a personality.`)
+    }
+  }
+
   return { awards, agg, signatureHero }
 }
 
 // ── Per-player cards ────────────────────────────────────────────────────────
-export function playerCards(perfs, players, awards, agg, signatureHero, minGames = 3) {
+export function playerCards(perfs, players, awards, agg, signatureHero, puncMap = new Map(), minGames = 3) {
   const awardByPlayer = new Map()
   for (const a of awards) if (!awardByPlayer.has(a.winnerId)) awardByPlayer.set(a.winnerId, a)
 
@@ -220,6 +238,7 @@ export function playerCards(perfs, players, awards, agg, signatureHero, minGames
       title: award ? award.title : titleFor(p, s),
       titleEmoji: award ? award.emoji : '🎮',
       isAward: !!award,
+      punc: puncMap.get(p.id) || null,
       bestGame: s.maxKills ? { kills: s.maxKills, hero: s.maxKillsHero } : null,
     })
   }
