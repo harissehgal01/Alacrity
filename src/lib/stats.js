@@ -107,29 +107,6 @@ export function heroStats(perfs) {
   return { byHero: [...byHero.values()], signatureHero }
 }
 
-// Ban counts from completed draft rooms.
-// Ban counts across finished drafts. Only rooms that ran the full sequence
-// count — abandoned and half-finished test rooms would otherwise dominate.
-export function banStats(draftRooms, heroes, minActions = 24) {
-  const byId = new Map(heroes.map(h => [h.id, h.name]))
-  const counts = new Map()
-  let drafts = 0
-  for (const room of draftRooms) {
-    const actions = room.actions || []
-    if (actions.length < minActions) continue
-    drafts += 1
-    for (const a of actions) {
-      if (a.type !== 'ban') continue
-      const name = byId.get(a.hero_id) || `Hero #${a.hero_id}`
-      counts.set(name, (counts.get(name) || 0) + 1)
-    }
-  }
-  const rows = [...counts.entries()].map(([hero, count]) => ({ hero, count, pct: drafts ? count / drafts : 0 }))
-    .sort((a, b) => b.count - a.count || a.hero.localeCompare(b.hero))
-  rows.drafts = drafts
-  return rows
-}
-
 // Assorted crew-wide fun facts.
 export function funFacts(matches, perfs, players) {
   const named = id => players.find(p => p.id === id)?.name || 'Unknown'
