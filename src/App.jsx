@@ -158,8 +158,8 @@ export default function App() {
           )}
         </>
       )}
-      {!loading && !openPlayer && tab === 'stats' && <Stats players={players} perfs={perfs} matches={matches} openProfile={setOpenPlayer} isAdmin={isAdmin} />}
-      {!loading && !openPlayer && tab === 'recap' && <SeasonRecap players={players} perfs={perfs} matches={matches} seasons={seasons} openProfile={setOpenPlayer} />}
+      {!loading && !openPlayer && tab === 'stats' && <Stats players={players} perfs={perfs} matches={matches} punc={punc} openProfile={setOpenPlayer} isAdmin={isAdmin} />}
+      {!loading && !openPlayer && tab === 'recap' && <SeasonRecap players={players} perfs={perfs} matches={matches} punc={punc} seasons={seasons} openProfile={setOpenPlayer} />}
       {!loading && !openPlayer && tab === 'draft' && <Draft />}
       {!loading && !openPlayer && tab === 'matches' && (
         <>
