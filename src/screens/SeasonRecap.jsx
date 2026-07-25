@@ -11,6 +11,98 @@ const hms = s => {
 const dur = s => s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
 const shortDate = iso => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 
+const APP_URL = 'https://alacrity-gray.vercel.app/'
+const slug = s => (s || 'player').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'player'
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+function hexA(hex, a) {
+  const m = (hex || '#5B7CFF').replace('#', '')
+  const n = m.length === 3 ? m.split('').map(c => c + c).join('') : m
+  const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16)
+  return `rgba(${r},${g},${b},${a})`
+}
+function initials(name) {
+  const parts = (name || '?').replace(/[^A-Za-z0-9 ]/g, '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return (name || '?').slice(0, 2).toUpperCase()
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
+// Draw a self-contained share card to a PNG blob. Everything is drawn (no
+// external images) so there are no CORS/taint issues on export.
+async function renderCardImage(card, season) {
+  try {
+    const { player, s, signature, title, titleEmoji, bestGame } = card
+    const accent = themeOf(player).accent || '#5B7CFF'
+    const W = 1080, H = 1350, pad = 84
+    const canvas = document.createElement('canvas')
+    canvas.width = W; canvas.height = H
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    try { await document.fonts.ready } catch { /* fonts optional */ }
+    const F = (w, size) => `${w} ${size}px Outfit, system-ui, sans-serif`
+
+    const bg = ctx.createLinearGradient(0, 0, 0, H)
+    bg.addColorStop(0, '#121820'); bg.addColorStop(1, '#0A0E13')
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
+    const glow = ctx.createRadialGradient(W * 0.22, 40, 0, W * 0.22, 40, W)
+    glow.addColorStop(0, hexA(accent, 0.30)); glow.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 2
+    roundRect(ctx, 20, 20, W - 40, H - 40, 30); ctx.stroke()
+
+    ctx.fillStyle = accent; ctx.font = F(700, 27); ctx.fillText('ALACRITY DOTA', pad, 122)
+    ctx.fillStyle = '#93A0AF'; ctx.font = F(500, 27); ctx.fillText(`${season ? season.name + ' · ' : ''}Season Recap`, pad, 160)
+
+    const cx = pad + 70, cy = 300, r = 70
+    const ag = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r)
+    ag.addColorStop(0, accent); ag.addColorStop(1, hexA(accent, 0.5))
+    ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#0A0E13'; ctx.font = F(800, 56); ctx.textAlign = 'center'
+    ctx.fillText(initials(player.name), cx, cy + 20); ctx.textAlign = 'left'
+
+    ctx.fillStyle = '#EEF2F7'; ctx.font = F(800, 74); ctx.fillText(player.name, pad + 168, cy - 4)
+    ctx.fillStyle = accent; ctx.font = F(600, 34); ctx.fillText(`${titleEmoji} ${title}`, pad + 168, cy + 46)
+
+    const tiles = [[`${s.games}`, 'GAMES'], [`${Math.round(s.winRate * 100)}%`, 'WIN RATE'], [s.kda.toFixed(2), 'KDA']]
+    const tw = (W - pad * 2 - 32) / 3, ty = 438, th = 150
+    tiles.forEach((t, i) => {
+      const tx = pad + i * (tw + 16)
+      ctx.fillStyle = 'rgba(255,255,255,0.045)'; roundRect(ctx, tx, ty, tw, th, 18); ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1.5; roundRect(ctx, tx, ty, tw, th, 18); ctx.stroke()
+      ctx.fillStyle = '#EEF2F7'; ctx.font = F(800, 58); ctx.textAlign = 'center'; ctx.fillText(t[0], tx + tw / 2, ty + 82)
+      ctx.fillStyle = '#93A0AF'; ctx.font = F(600, 23); ctx.fillText(t[1], tx + tw / 2, ty + 120); ctx.textAlign = 'left'
+    })
+
+    const rows = [
+      ['Record', `${s.wins}-${s.losses}`],
+      signature ? ['Signature hero', `${signature} ×${card.signatureGames}`] : null,
+      ['Hero pool', `${s.versatility} heroes`],
+      bestGame ? ['Best game', `${bestGame.kills} kills · ${bestGame.hero}`] : null,
+    ].filter(Boolean)
+    let ry = 706
+    rows.forEach(([k, v]) => {
+      ctx.fillStyle = '#93A0AF'; ctx.font = F(500, 32); ctx.textAlign = 'left'; ctx.fillText(k, pad, ry)
+      ctx.fillStyle = '#EEF2F7'; ctx.font = F(700, 32); ctx.textAlign = 'right'; ctx.fillText(v, W - pad, ry); ctx.textAlign = 'left'
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.beginPath(); ctx.moveTo(pad, ry + 26); ctx.lineTo(W - pad, ry + 26); ctx.stroke()
+      ry += 84
+    })
+
+    ctx.fillStyle = accent; ctx.font = F(700, 30); ctx.textAlign = 'center'
+    ctx.fillText('alacrity-gray.vercel.app', W / 2, H - 92); ctx.textAlign = 'left'
+
+    return await new Promise(res => canvas.toBlob(res, 'image/png'))
+  } catch { return null }
+}
+
 export default function SeasonRecap({ players, perfs, matches, seasons = [], openProfile }) {
   const withGames = seasons.filter(se => matches.some(m => {
     const t = new Date(m.played_at).getTime()
@@ -78,7 +170,7 @@ export default function SeasonRecap({ players, perfs, matches, seasons = [], ope
             [totals.games, 'games'],
             [totals.kills.toLocaleString(), 'total kills'],
             [hms(totals.seconds), 'played'],
-            [totals.nights, 'nights'],
+            [totals.sessions, 'sessions'],
             [dur(totals.avgSeconds), 'avg game'],
           ].map(([v, k]) => (
             <div key={k} style={{ background: 'var(--glass)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
@@ -223,16 +315,34 @@ export default function SeasonRecap({ players, perfs, matches, seasons = [], ope
 function PlayerCard({ card, season, onOpen }) {
   const { player, s, signature, title, titleEmoji, bestGame } = card
   const theme = themeOf(player)
-  const [copied, setCopied] = useState(false)
+  const [flash, setFlash] = useState('')
+  const [busy, setBusy] = useState(false)
+  const ping = msg => { setFlash(msg); setTimeout(() => setFlash(''), 1800) }
 
   const share = async (e) => {
     e.stopPropagation()
-    const text = `${titleEmoji} ${player.name} — ${season ? season.name : 'Alacrity Dota'}\n${title}\n${s.games} games · ${fmt.pct(s.winRate)} win · ${s.kda.toFixed(2)} KDA${signature ? ` · signature: ${signature}` : ''}\nAlacrity Dota`
+    if (busy) return
+    setBusy(true)
+    const text = `${player.name} — ${title} · ${s.games} games, ${fmt.pct(s.winRate)} win, ${s.kda.toFixed(2)} KDA${signature ? ` · signature ${signature}` : ''}`
     try {
-      if (navigator.share) { await navigator.share({ title: `${player.name} · Season Recap`, text }); return }
-      await navigator.clipboard.writeText(text)
-      setCopied(true); setTimeout(() => setCopied(false), 1500)
-    } catch { /* user dismissed */ }
+      const blob = await renderCardImage(card, season)
+      const file = blob ? new File([blob], `${slug(player.name)}-recap.png`, { type: 'image/png' }) : null
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ title: `${player.name} · Season Recap`, text, files: [file] })
+      } else if (blob) {
+        // Desktop / no native file share: download the image and copy the link.
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a'); a.href = url; a.download = `${slug(player.name)}-recap.png`
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+        try { await navigator.clipboard.writeText(APP_URL) } catch { /* clipboard blocked */ }
+        ping('Saved · link copied ✓')
+      } else if (navigator.share) {
+        await navigator.share({ title: `${player.name} · Season Recap`, text, url: APP_URL })
+      } else {
+        await navigator.clipboard.writeText(`${text}\n${APP_URL}`); ping('Copied ✓')
+      }
+    } catch { /* user dismissed the share sheet */ }
+    setBusy(false)
   }
 
   return (
@@ -272,7 +382,7 @@ function PlayerCard({ card, season, onOpen }) {
       </div>
       <div className="row" style={{ padding: '8px 12px', borderTop: '1px solid var(--line)' }}>
         <span className="mute grow" style={{ fontSize: 11 }}>{season ? season.name : ''}</span>
-        <button className="btn sm ghost" onClick={share}>{copied ? 'Copied ✓' : 'Share'}</button>
+        <button className="btn sm ghost" onClick={share} disabled={busy}>{busy ? '…' : flash || 'Share card'}</button>
       </div>
     </div>
   )

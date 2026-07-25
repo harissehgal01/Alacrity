@@ -38,6 +38,7 @@ const CATEGORIES = [
     { key: 'avgSmoke', label: 'Avg smoke of deceit', fmt: fmt.d1 },
   ]},
   { group: 'Overall', options: [
+    { key: 'mvps', label: 'Most MVPs 👑', fmt: v => v },
     { key: 'versatility', label: 'Versatility (distinct heroes)', fmt: v => v },
     { key: 'winRate', label: 'Win rate', fmt: fmt.pct },
     { key: 'wins', label: 'Total wins', fmt: v => v },
@@ -88,11 +89,15 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, o
   const impact = useMemo(() => impactStats(perfs), [perfs])
   const active = ALL_OPTIONS.find(o => o.key === statKey)
 
+  const mvpCount = useMemo(() => new Map(impact.mvpLeaders.map(r => [r.player_id, r.mvps])), [impact])
   const rows = useMemo(() => {
-    const list = players.map(p => ({ player: p, s: stats.get(p.id) })).filter(r => r.s && r.s.games > 0 && r.s[statKey] != null)
+    const list = players.map(p => {
+      const base = stats.get(p.id)
+      return { player: p, s: base ? { ...base, mvps: mvpCount.get(p.id) || 0 } : base }
+    }).filter(r => r.s && r.s.games > 0 && r.s[statKey] != null)
     list.sort((a, b) => b.s[statKey] - a.s[statKey])
     return list
-  }, [players, stats, statKey])
+  }, [players, stats, statKey, mvpCount])
 
   const hStats = useMemo(() => heroStats(perfs), [perfs])
   const heroRows = useMemo(() => {
