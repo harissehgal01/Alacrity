@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { ON_TIME_GRACE } from '../lib/punctuality'
 
 function cellClass(r) {
   if (!r) return 'cell-empty'
   if (r.no_show) return 'cell-noshow'
   const m = r.minutes_late ?? 0
-  if (m <= 0) return 'cell-ontime'
-  if (m <= 10) return 'cell-late10'
+  if (m <= ON_TIME_GRACE) return 'cell-ontime'
   if (m <= 20) return 'cell-late20'
   return 'cell-late30'
 }

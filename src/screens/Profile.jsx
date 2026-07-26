@@ -4,7 +4,7 @@ import { aggregate, fmt, impactStats, filterBySeason, mvpByMatch } from '../lib/
 import { fetchHeroes } from '../lib/opendota'
 import { GodAvatar, godOf, GodPicker, ThemePicker, themeOf } from '../lib/gods'
 import { ROLES, roleLabel } from '../lib/balance'
-import { puncSummary, tierLabel, tierColor } from '../lib/punctuality'
+import { puncSummary, tierLabel, tierColor, ON_TIME_GRACE } from '../lib/punctuality'
 
 // Match Ribbon — interactive area chart over recent games.
 // Dots are win/loss colored; hover/tap shows a tooltip with hero + numbers.
@@ -153,7 +153,7 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
       noShows,
       totalLate: total,
       avgLate: attended.length ? total / attended.length : null,
-      onTimeRate: myPunc.length ? attended.filter(r => r.minutes_late <= 0).length / myPunc.length : null,
+      onTimeRate: myPunc.length ? attended.filter(r => r.minutes_late <= ON_TIME_GRACE).length / myPunc.length : null,
     }
   }, [myPunc])
 
