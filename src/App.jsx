@@ -117,7 +117,7 @@ export default function App() {
   // must claim a roster identity (or skip) — only prompt if not linked and roster exists
   const needsClaim = profile && !profile.player_id && !profile.claim_skipped && !isGuest
 
-  const shared = { players, perfs, matches, punc, reload, openProfile: setOpenPlayer, isAdmin, online, profiles }
+  const shared = { players, perfs, matches, punc, reload, openProfile: setOpenPlayer, isAdmin, online, profiles, user }
 
   return (
     <div className="app">
@@ -174,7 +174,7 @@ export default function App() {
 
       {openPlayer && (
         <div className="card">
-          <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} players={players} seasons={seasons} reload={reload} onClose={() => setOpenPlayer(null)} />
+          <Profile player={openPlayer} perfs={perfs} matches={matches} punc={punc} players={players} seasons={seasons} reload={reload} onClose={() => setOpenPlayer(null)} isAdmin={isAdmin} viewerPlayerId={profile?.player_id || null} />
         </div>
       )}
 
