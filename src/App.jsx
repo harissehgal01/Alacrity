@@ -29,7 +29,7 @@ const TABS = [
 ]
 
 export default function App() {
-  const { session, user, profile, loading: authLoading, isAdmin, signOut, refreshProfile } = useAuth()
+  const { session, user, profile, loading: authLoading, isAdmin, isGuest, signOut, refreshProfile } = useAuth()
   const online = usePresence(user)
   const [tab, setTab] = useState('board')
   const [players, setPlayers] = useState([])
@@ -115,7 +115,7 @@ export default function App() {
   if (!session) return <div className="app"><Login /></div>
 
   // must claim a roster identity (or skip) — only prompt if not linked and roster exists
-  const needsClaim = profile && !profile.player_id && !profile.claim_skipped
+  const needsClaim = profile && !profile.player_id && !profile.claim_skipped && !isGuest
 
   const shared = { players, perfs, matches, punc, reload, openProfile: setOpenPlayer, isAdmin, online, profiles }
 
@@ -135,7 +135,7 @@ export default function App() {
           <button className="iconbtn" onClick={toggleTheme} aria-label="Toggle theme">{theme === 'dark' ? '☀' : '☾'}</button>
           <button className="iconbtn" onClick={() => setAbout(true)} aria-label="About">i</button>
           <button className="iconbtn avatar" onClick={() => { const mine = players.find(p => p.id === profile?.player_id); mine ? setOpenPlayer(mine) : setMenu(true) }} aria-label="Profile">
-            {(() => { const mine = players.find(p => p.id === profile?.player_id); return mine ? <GodAvatar player={mine} size={22} /> : (profile?.display_name || user.email || '?')[0].toUpperCase() })()}
+            {(() => { const mine = players.find(p => p.id === profile?.player_id); return mine ? <GodAvatar player={mine} size={22} /> : (profile?.display_name || user.email || 'Guest')[0].toUpperCase() })()}
           </button>
         </div>
       </header>
@@ -153,7 +153,7 @@ export default function App() {
           {board === 'public' && (
             <>
               <PublicLeaderboard profiles={profiles} players={players} perfs={perfs} user={user} online={online} />
-              {!profile?.player_id && <SelfLog user={user} reload={reload} />}
+              {!profile?.player_id && !isGuest && <SelfLog user={user} reload={reload} />}
             </>
           )}
         </>
@@ -182,7 +182,7 @@ export default function App() {
         <div className="modal-back" onClick={() => setMenu(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
             <h2 style={{ marginBottom: 4 }}>Profile</h2>
-            <p className="small mute" style={{ marginTop: 0 }}>{profile?.display_name || user.email}{isAdmin ? ' · admin' : ''}</p>
+            <p className="small mute" style={{ marginTop: 0 }}>{profile?.display_name || user.email || 'Guest'}{isAdmin ? ' · admin' : ''}{isGuest ? ' · guest' : ''}</p>
             {profile?.player_id && <p className="small mute" style={{ marginTop: -6 }}>Linked to roster: <b style={{ color: 'var(--text)' }}>{players.find(p => p.id === profile.player_id)?.name || '—'}</b></p>}
             <div className="row" style={{ marginTop: 10 }}>
               <button className="btn grow danger" onClick={() => { setMenu(false); signOut() }}>Sign out</button>
@@ -201,7 +201,7 @@ export default function App() {
               <div className="l"><a href="mailto:connect@alacritydesigns.com">connect@alacritydesigns.com</a></div>
               <div className="l"><a href="https://alacritydesigns.com" target="_blank" rel="noreferrer">alacritydesigns.com</a></div>
               <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-                <div className="small mute" style={{ marginBottom: 10 }}>Signed in as {user.email}{isAdmin ? ' · admin' : ''}</div>
+                <div className="small mute" style={{ marginBottom: 10 }}>{isGuest ? 'Browsing as guest' : `Signed in as ${user.email}`}{isAdmin ? ' · admin' : ''}</div>
                 <button className="btn sm ghost" onClick={signOut}>Sign out</button>
                 <button className="btn sm ghost" onClick={() => setAbout(false)} style={{ marginLeft: 8 }}>Close</button>
               </div>
