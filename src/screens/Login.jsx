@@ -8,12 +8,18 @@ export default function Login() {
 
   async function guest() {
     setErr(''); setBusy(true)
+    if (typeof continueAsGuest !== 'function') {
+      setBusy(false)
+      setErr('Guest sign-in isn\u2019t wired up in this build (src/lib/auth.jsx is out of date).')
+      return
+    }
     try { await continueAsGuest() }
     catch (e) {
+      console.error('Guest sign-in failed:', e)
       setBusy(false)
       setErr(e?.message?.includes('disabled')
         ? 'Guest access isn\u2019t turned on yet \u2014 ask the admin to enable Anonymous Sign-ins in Supabase.'
-        : 'Couldn\u2019t start a guest session. Try again.')
+        : `Couldn\u2019t start a guest session: ${e?.message || 'unknown error'}`)
     }
   }
 
