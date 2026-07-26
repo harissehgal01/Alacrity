@@ -38,11 +38,7 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
     return { mostKills, topGameDmg, bestKda, topNetWorth, topBuilding, mostAssists, mostVersatile, topCamps, topDewards }
   }, [stats, players])
 
-  const mostMvps = useMemo(() => {
-    const named = id => players.find(p => p.id === id)?.name || '—'
-    const top = impact.mvpLeaders[0]
-    return top ? { v: top.mvps, who: named(top.player_id) } : null
-  }, [impact, players])
+  const mvpCount = useMemo(() => new Map(impact.mvpLeaders.map(r => [r.player_id, r.mvps])), [impact])
 
   if (rows.length === 0) {
     return (
@@ -62,7 +58,6 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
         {leaders.topBuilding && <div className="leader" title={leaders.topBuilding.hero ? `as ${leaders.topBuilding.hero}` : ''}><div className="k">Building dmg</div><div className="v num">{fmt.n(leaders.topBuilding.v)}</div><div className="who">{leaders.topBuilding.who}</div></div>}
         {leaders.mostAssists && <div className="leader" title={leaders.mostAssists.hero ? `as ${leaders.mostAssists.hero}` : ''}><div className="k">Most assists</div><div className="v num">{leaders.mostAssists.v}</div><div className="who">{leaders.mostAssists.who}</div></div>}
         {leaders.mostVersatile && <div className="leader" title="Distinct heroes played"><div className="k">Versatility</div><div className="v num">{leaders.mostVersatile.v}</div><div className="who">{leaders.mostVersatile.who}</div></div>}
-        {mostMvps && <div className="leader" title="Most match MVPs"><div className="k">Most MVPs 👑</div><div className="v num">{mostMvps.v}</div><div className="who">{mostMvps.who}</div></div>}
       </div>
 
       <div className="row" style={{ marginBottom: 12 }}>
@@ -82,6 +77,7 @@ export default function Leaderboard({ players, perfs, openProfile, online = new 
             <div className="grow">
               <div className="lb-name">
                 {player.name}
+                {mvpCount.get(player.id) > 0 && <span className="tag" title="Match MVPs" style={{ marginLeft: 6 }}>👑 {mvpCount.get(player.id)}</span>}
                 {onlinePlayerIds.has(player.id) && <span className="online-dot" title="Online now" />}
               </div>
               <div className="lb-sub num">
