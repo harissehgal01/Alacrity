@@ -33,12 +33,16 @@ export function AuthProvider({ children }) {
       options: { redirectTo: window.location.origin },
     })
   }
+  async function continueAsGuest() {
+    const { error } = await supabase.auth.signInAnonymously()
+    if (error) throw error
+  }
   async function signOut() { await supabase.auth.signOut() }
 
   const refreshProfile = () => loadProfile(session?.user?.id)
 
   return (
-    <AuthCtx.Provider value={{ session, user: session?.user || null, profile, loading, isAdmin: !!profile?.is_admin, signInWithGoogle, signOut, refreshProfile }}>
+    <AuthCtx.Provider value={{ session, user: session?.user || null, profile, loading, isAdmin: !!profile?.is_admin, isGuest: !!session?.user?.is_anonymous, signInWithGoogle, continueAsGuest, signOut, refreshProfile }}>
       {children}
     </AuthCtx.Provider>
   )
