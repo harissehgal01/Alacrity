@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fmt, mvpByMatch } from '../lib/stats'
 import { fetchHeroes } from '../lib/opendota'
+import Scorecard from './Scorecard'
 
 // Games within this many minutes of each other are grouped into one session.
 const SESSION_GAP_MIN = 720
 
-export default function Matches({ matches, perfs, players, reload }) {
+export default function Matches({ matches, perfs, players, reload, openProfile }) {
   const [filter, setFilter] = useState('')
   const [heroes, setHeroes] = useState([])
+  const [openMatch, setOpenMatch] = useState(null)
   useEffect(() => { fetchHeroes().then(setHeroes).catch(() => {}) }, [])
   const imgByHero = useMemo(() => new Map(heroes.map(h => [h.name, h.img])), [heroes])
 
@@ -76,7 +78,7 @@ export default function Matches({ matches, perfs, players, reload }) {
               const won = filter ? mine?.won : m.radiant_win
               const heroImg = mine ? imgByHero.get(mine.hero_name) : null
               return (
-                <div key={m.id} className="match-row" style={{ borderLeft: `3px solid ${won ? 'var(--radiant, #3fb950)' : 'var(--dire, #f85149)'}`, paddingLeft: 10 }}>
+                <button key={m.id} className="match-row" style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', borderLeft: `3px solid ${won ? 'var(--radiant, #3fb950)' : 'var(--dire, #f85149)'}`, paddingLeft: 10, cursor: 'pointer' }} onClick={() => setOpenMatch(m.id)}>
                   {heroImg
                     ? <img src={heroImg} alt={mine.hero_name} title={mine.hero_name} style={{ width: 40, height: 22, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
                     : <span className={`tag ${m.radiant_win ? 'rad' : 'dire'}`}>{m.radiant_win ? 'RAD' : 'DIRE'}</span>}
@@ -86,13 +88,14 @@ export default function Matches({ matches, perfs, players, reload }) {
                       {ps.map(p => `${mvps.get(m.id)?.player_id === p.player_id ? '👑 ' : ''}${named(p.player_id)}${p.won ? ' ✓' : ''}`).join(' · ')}
                     </div>
                   </div>
-                  <button className="btn sm danger" onClick={() => remove(m)}>✕</button>
-                </div>
+                  <button className="btn sm danger" onClick={e => { e.stopPropagation(); remove(m) }}>✕</button>
+                </button>
               )
             })}
           </div>
         )
       })}
+      {openMatch && <Scorecard matchId={openMatch} matches={matches} perfs={perfs} players={players} imgByHero={imgByHero} openProfile={openProfile} onClose={() => setOpenMatch(null)} />}
     </div>
   )
 }

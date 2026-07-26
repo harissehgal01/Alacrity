@@ -4,6 +4,7 @@ import { fetchHeroes } from '../lib/opendota'
 import { aggregate, heroStats, funFacts, fmt, impactStats, filterBySeason, versusRecord, togetherRecord } from '../lib/stats'
 import { GodAvatar } from '../lib/gods'
 import { puncByPlayer, puncInSeason } from '../lib/punctuality'
+import Scorecard from './Scorecard'
 
 // Per-game record keys → the performance column that sets them.
 const MAX_FIELD = {
@@ -65,6 +66,10 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, p
   const [newSeason, setNewSeason] = useState(null)
   const [rivalA, setRivalA] = useState([])
   const [rivalB, setRivalB] = useState([])
+  const [openHero, setOpenHero] = useState(null)
+  const [openMatch, setOpenMatch] = useState(null)
+
+  const imgByHero = useMemo(() => new Map(heroes.map(h => [h.name, h.img])), [heroes])
 
   useEffect(() => { fetchHeroes().then(setHeroes).catch(() => {}) }, [])
   useEffect(() => {
@@ -116,6 +121,13 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, p
   }, [players, stats, statKey, mvpCount, puncMap])
 
   const hStats = useMemo(() => heroStats(perfs), [perfs])
+  const heroMatches = useMemo(() => {
+    if (!openHero) return []
+    return perfs.filter(p => p.hero_name === openHero)
+      .map(p => ({ perf: p, match: matches.find(m => m.id === p.match_id) }))
+      .filter(r => r.match)
+      .sort((a, b) => new Date(b.match.played_at) - new Date(a.match.played_at))
+  }, [openHero, perfs, matches])
   const heroRows = useMemo(() => {
     const list = [...hStats.byHero]
     list.sort((a, b) => (heroSort === 'games' ? b.games - a.games : b.winRate - a.winRate))
@@ -178,7 +190,7 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, p
         </>
       )}
 
-      {view === 'heroes' && (
+      {view === 'heroes' && !openHero && (
         <>
           <div className="row" style={{ marginBottom: 12 }}>
             <div className="grow eyebrow">Ranked by</div>
@@ -189,14 +201,35 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, p
           </div>
           {heroRows.length === 0 && <p className="mute small">No heroes logged yet.</p>}
           {heroRows.map((h, i) => (
-            <div key={h.hero} className={`lb-row ${i === 0 ? 'first' : ''}`}>
+            <button key={h.hero} className={`lb-row ${i === 0 ? 'first' : ''}`} style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setOpenHero(h.hero)}>
               <div className="lb-rank num">{i + 1}</div>
               <div className="grow">
-                <div className="lb-name">{h.hero}</div>
+                <div className="lb-name">{imgByHero.get(h.hero) && <img src={imgByHero.get(h.hero)} alt="" style={{ width: 28, height: 16, objectFit: 'cover', borderRadius: 3, marginRight: 8, verticalAlign: 'middle' }} />}{h.hero}</div>
                 <div className="lb-sub num">{h.wins}W – {h.games - h.wins}L · {h.games} games</div>
               </div>
               <div className="right"><div className="lb-wr num">{fmt.pct(h.winRate)}</div></div>
-            </div>
+            </button>
+          ))}
+        </>
+      )}
+
+      {view === 'heroes' && openHero && (
+        <>
+          <button className="btn sm ghost" style={{ marginBottom: 12 }} onClick={() => setOpenHero(null)}>← All heroes</button>
+          <div className="row" style={{ alignItems: 'center', marginBottom: 10, gap: 8 }}>
+            {imgByHero.get(openHero) && <img src={imgByHero.get(openHero)} alt="" style={{ width: 40, height: 22, objectFit: 'cover', borderRadius: 4 }} />}
+            <h2 style={{ marginBottom: 0 }}>{openHero}</h2>
+            <span className="mute num" style={{ marginLeft: 'auto' }}>{heroMatches.length} game{heroMatches.length === 1 ? '' : 's'}</span>
+          </div>
+          {heroMatches.length === 0 && <p className="mute small">No games found for this hero.</p>}
+          {heroMatches.map(({ perf, match }) => (
+            <button key={match.id} className="match-row" style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', borderLeft: `3px solid ${perf.won ? 'var(--radiant, #3fb950)' : 'var(--dire, #f85149)'}`, paddingLeft: 10, cursor: 'pointer' }} onClick={() => setOpenMatch(match.id)}>
+              <div className="grow small">
+                <div>{players.find(p => p.id === perf.player_id)?.name || '—'} <span className="mute">· {new Date(match.played_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span></div>
+                <div className="mute num" style={{ fontSize: 11 }}>{fmt.n(perf.net_worth)} net · {fmt.dur(match.duration_seconds)}</div>
+              </div>
+              <div className="right num" style={{ fontSize: 13 }}>{perf.kills}/{perf.deaths}/{perf.assists}</div>
+            </button>
           ))}
         </>
       )}
@@ -294,6 +327,7 @@ export default function Stats({ players, perfs: allPerfs, matches: allMatches, p
           )}
         </div>
       )}
+      {openMatch && <Scorecard matchId={openMatch} matches={matches} perfs={perfs} players={players} imgByHero={imgByHero} openProfile={openProfile} onClose={() => setOpenMatch(null)} />}
     </div>
   )
 }
