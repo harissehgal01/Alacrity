@@ -7,7 +7,7 @@ import Scorecard from './Scorecard'
 // Games within this many minutes of each other are grouped into one session.
 const SESSION_GAP_MIN = 720
 
-export default function Matches({ matches, perfs, players, reload, openProfile }) {
+export default function Matches({ matches, perfs, players, reload, openProfile, isAdmin = false, user = null }) {
   const [filter, setFilter] = useState('')
   const [heroes, setHeroes] = useState([])
   const [openMatch, setOpenMatch] = useState(null)
@@ -88,7 +88,9 @@ export default function Matches({ matches, perfs, players, reload, openProfile }
                       {ps.map(p => `${mvps.get(m.id)?.player_id === p.player_id ? '👑 ' : ''}${named(p.player_id)}${p.won ? ' ✓' : ''}`).join(' · ')}
                     </div>
                   </div>
-                  <button className="btn sm danger" onClick={e => { e.stopPropagation(); remove(m) }}>✕</button>
+                  {(isAdmin || (user && m.created_by === user.id)) && (
+                    <button className="btn sm danger" onClick={e => { e.stopPropagation(); remove(m) }}>✕</button>
+                  )}
                 </button>
               )
             })}

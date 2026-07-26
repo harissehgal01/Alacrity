@@ -71,7 +71,8 @@ function MatchRibbon({ games, imgByHero, accent }) {
   )
 }
 
-export default function Profile({ player, perfs: allPerfs, matches: allMatches, punc = [], players = [], seasons = [], reload, onClose }) {
+export default function Profile({ player, perfs: allPerfs, matches: allMatches, punc = [], players = [], seasons = [], reload, onClose, isAdmin = false, viewerPlayerId = null }) {
+  const canEdit = isAdmin || viewerPlayerId === player.id
   const [openMatch, setOpenMatch] = useState(null)
   const [pickingGod, setPickingGod] = useState(false)
   const [pickingTheme, setPickingTheme] = useState(false)
@@ -115,24 +116,35 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
     return mine.slice(-10)
   }, [perfs, matches, player.id])
 
+  const [saveErr, setSaveErr] = useState('')
+
   async function saveAvatar(patch) {
+    if (!canEdit) return
+    const prev = localPlayer
     setLocalPlayer(lp => ({ ...lp, ...patch }))
     setPickingGod(false)
-    await supabase.from('players').update(patch).eq('id', player.id)
-    reload && reload()
+    const { data, error } = await supabase.from('players').update(patch).eq('id', player.id).select()
+    if (error || !data?.length) { setLocalPlayer(prev); setSaveErr('Couldn\u2019t save \u2014 you may not have permission to edit this profile.') }
+    else reload && reload()
   }
   async function saveRole(pos) {
+    if (!canEdit) return
+    const prevPos = rolePos, prevLp = localPlayer
     setRolePos(pos)
     setLocalPlayer(lp => ({ ...lp, role_pos: pos }))
-    await supabase.from('players').update({ role_pos: pos }).eq('id', player.id)
-    reload && reload()
+    const { data, error } = await supabase.from('players').update({ role_pos: pos }).eq('id', player.id).select()
+    if (error || !data?.length) { setRolePos(prevPos); setLocalPlayer(prevLp); setSaveErr('Couldn\u2019t save \u2014 you may not have permission to edit this profile.') }
+    else reload && reload()
   }
 
   async function saveTheme(key) {
+    if (!canEdit) return
+    const prev = localPlayer
     setLocalPlayer(lp => ({ ...lp, theme_key: key }))
     setPickingTheme(false)
-    await supabase.from('players').update({ theme_key: key }).eq('id', player.id)
-    reload && reload()
+    const { data, error } = await supabase.from('players').update({ theme_key: key }).eq('id', player.id).select()
+    if (error || !data?.length) { setLocalPlayer(prev); setSaveErr('Couldn\u2019t save \u2014 you may not have permission to edit this profile.') }
+    else reload && reload()
   }
 
   // Last 15 games with match info, oldest → newest, for the ribbon.
@@ -177,25 +189,31 @@ export default function Profile({ player, perfs: allPerfs, matches: allMatches, 
           <GodAvatar player={localPlayer} size={40} />
           <span>{player.name}<span className="small mute" style={{ display: 'block', fontSize: 11, fontWeight: 400 }}>{localPlayer.avatar_url ? '' : godOf(localPlayer).title}{myImpact?.mvps ? `${localPlayer.avatar_url ? '' : ' · '}👑 ${myImpact.mvps} MVP${myImpact.mvps > 1 ? 's' : ''}` : ''}</span></span>
         </h2>
-        <button className="btn sm ghost" onClick={() => { setPickingGod(v => !v); setPickingTheme(false) }}>{pickingGod ? 'Close' : 'Avatar'}</button>
-        <button className="btn sm ghost" onClick={() => { setPickingTheme(v => !v); setPickingGod(false) }}>{pickingTheme ? 'Close' : 'Theme'}</button>
+        {canEdit && <button className="btn sm ghost" onClick={() => { setPickingGod(v => !v); setPickingTheme(false) }}>{pickingGod ? 'Close' : 'Avatar'}</button>}
+        {canEdit && <button className="btn sm ghost" onClick={() => { setPickingTheme(v => !v); setPickingGod(false) }}>{pickingTheme ? 'Close' : 'Theme'}</button>}
         <button className="btn sm ghost" onClick={onClose}>‹ Back</button>
       </div>
-      {pickingGod && (
+      {saveErr && <p className="small" style={{ color: 'var(--dire)', marginTop: -8, marginBottom: 12 }}>{saveErr}</p>}
+      {canEdit && pickingGod && (
         <div className="card" style={{ background: 'var(--bg0)', marginBottom: 14 }}>
           <GodPicker player={localPlayer} allPlayers={players} heroes={heroes} onPick={saveAvatar} />
         </div>
       )}
       <div className="row" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 14 }}>
         <span className="eyebrow" style={{ marginRight: 2 }}>Role</span>
+        {!canEdit && rolePos == null && <span className="mute small">Not set</span>}
         {Object.entries(ROLES).map(([pos, r]) => (
-          <button key={pos} className={`btn sm ${String(rolePos) === pos ? '' : 'ghost'}`} onClick={() => saveRole(Number(pos))}>
-            {r.short} <span className="mute" style={{ fontSize: 10 }}>{r.name}</span>
-          </button>
+          canEdit
+            ? <button key={pos} className={`btn sm ${String(rolePos) === pos ? '' : 'ghost'}`} onClick={() => saveRole(Number(pos))}>
+                {r.short} <span className="mute" style={{ fontSize: 10 }}>{r.name}</span>
+              </button>
+            : String(rolePos) === pos
+              ? <span key={pos} className="btn sm" style={{ cursor: 'default' }}>{r.short} <span className="mute" style={{ fontSize: 10 }}>{r.name}</span></span>
+              : null
         ))}
       </div>
 
-      {pickingTheme && (
+      {canEdit && pickingTheme && (
         <div className="card" style={{ background: 'var(--bg0)', marginBottom: 14 }}>
           <ThemePicker player={localPlayer} onPick={saveTheme} />
         </div>
