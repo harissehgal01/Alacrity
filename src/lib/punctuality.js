@@ -1,9 +1,12 @@
 // Summarise a player's punctuality into a reliability signal for the leaderboard.
+// Anyone within ON_TIME_GRACE minutes of start is counted as on time.
+export const ON_TIME_GRACE = 10
+
 export function puncSummary(rows) {
   if (!rows || rows.length === 0) return null
   const attended = rows.filter(r => !r.no_show && r.minutes_late != null)
   const noShows = rows.filter(r => r.no_show).length
-  const onTime = attended.filter(r => r.minutes_late <= 0).length
+  const onTime = attended.filter(r => r.minutes_late <= ON_TIME_GRACE).length
   const total = attended.reduce((a, r) => a + Math.max(0, r.minutes_late), 0)
   const avg = attended.length ? total / attended.length : null
   const onTimeRate = rows.length ? onTime / rows.length : null
@@ -11,7 +14,7 @@ export function puncSummary(rows) {
   let tier = 'good'
   const noShowRate = rows.length ? noShows / rows.length : 0
   if (noShowRate >= 0.25 || (avg != null && avg > 20)) tier = 'bad'
-  else if ((avg != null && avg > 7) || noShowRate > 0) tier = 'mid'
+  else if ((avg != null && avg > ON_TIME_GRACE) || noShowRate > 0) tier = 'mid'
   return { sessions: rows.length, noShows, avg, onTimeRate, tier }
 }
 
