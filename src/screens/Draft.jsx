@@ -433,7 +433,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   }, [heroes, search])
 
   const lastAction = room.actions && room.actions.length ? room.actions[room.actions.length - 1] : null
-  const lastActionHero = lastAction ? heroById(lastAction.hero_id) : null
+  const lastActionHero = lastAction ? heroById(lastAction.hero_id) : null; const canUndo = !!lastAction && !!mySide && sideOfTeam(lastAction.team) === mySide
 
   // ── Draft advisor ──────────────────────────────────────────────
   const heroIdByName = useMemo(() => new Map(heroes.map(h => [h.name, h.id])), [heroes])
@@ -932,7 +932,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
               </div>
               {selected && <button className="btn sm ghost" onClick={() => setSelected(null)}>Cancel</button>}
               <button className="btn sm" disabled={!selected || paused} onClick={confirmAction}>Confirm</button>
-              <button className="btn sm ghost" onClick={undo} disabled={room.actions.length === 0}>Undo</button>
+              </div>)}{!done && canUndo && (<div className="row" style={{ marginBottom: 8 }}><div className="grow small mute">You made the last {lastAction.type}. Changed your mind?</div><button className="btn sm ghost" onClick={undo}>Undo last {lastAction.type}</button>
             </div>
           )}
           {myTurn && advice && (
@@ -1069,7 +1069,7 @@ function Board({ room, step, heroById, sideOfTeam }) {
           </div>
         )
         return (
-          <div key={i} className="board-row">
+          <div key={i} className={`board-row ${i === step && room.status !== 'completed' ? 'now-row' : ''}`}>
             <div>{side === 'radiant' && slot}</div>
             <div className="board-num">{i + 1}</div>
             <div>{side === 'dire' && slot}</div>
