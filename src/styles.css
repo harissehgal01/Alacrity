@@ -206,6 +206,8 @@ a { color: var(--brand-hi); text-decoration: none; }
 .bslot.ban img { filter: grayscale(1) brightness(.5); }
 .bslot.now { border-width: 3px; border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 25%, transparent), 0 0 16px color-mix(in srgb, var(--gold) 60%, transparent); animation: bslot-pulse 1.4s ease-in-out infinite; }
 @keyframes bslot-pulse { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 25%, transparent), 0 0 16px color-mix(in srgb, var(--gold) 60%, transparent); } 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--gold) 35%, transparent), 0 0 22px color-mix(in srgb, var(--gold) 80%, transparent); } }
+.neon-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 8.5px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: var(--gold); text-shadow: 0 0 3px var(--gold), 0 0 7px color-mix(in srgb, var(--gold) 70%, transparent); animation: neon-flicker 2.8s infinite; pointer-events: none; user-select: none; }
+@keyframes neon-flicker { 0%, 3%, 7%, 9%, 51%, 55%, 100% { opacity: .95; } 5%, 8%, 53% { opacity: .25; } }
 .bslot.empty-pick { border-style: dashed; border-width: 2px; border-color: color-mix(in srgb, var(--line) 160%, var(--dim) 40%); }
 
 .hero.picked { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); z-index: 4; }
