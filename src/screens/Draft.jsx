@@ -1063,13 +1063,15 @@ function Board({ room, step, heroById, sideOfTeam }) {
         const side = sideOfTeam(s.team)
         const a = bySlot[i]
         const img = a ? heroById(a.hero_id)?.img : null
+        const isNow = i === step && room.status !== 'completed'
         const slot = (
-          <div className={`bslot ${s.type === 'ban' ? 'ban ' + (side === 'radiant' ? 'side-l' : 'side-r') : 'pickslot'} ${i === step && room.status !== 'completed' ? 'now' : ''} ${!a && s.type === 'pick' ? 'empty-pick' : ''}`}>
+          <div className={`bslot ${s.type === 'ban' ? 'ban ' + (side === 'radiant' ? 'side-l' : 'side-r') : 'pickslot'} ${isNow ? 'now' : ''} ${!a && s.type === 'pick' ? 'empty-pick' : ''}`}>
             {img && <img src={img} alt="" />}
+            {isNow && !img && <span className="neon-label">{s.type}</span>}
           </div>
         )
         return (
-          <div key={i} className={`board-row ${i === step && room.status !== 'completed' ? 'now-row' : ''}`}>
+          <div key={i} className={`board-row ${isNow ? 'now-row' : ''}`}>
             <div>{side === 'radiant' && slot}</div>
             <div className="board-num">{i + 1}</div>
             <div>{side === 'dire' && slot}</div>
