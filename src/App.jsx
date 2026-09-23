@@ -45,6 +45,35 @@ export default function App() {
   const [theme, setTheme] = useState('dark')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [isStandalone, setIsStandalone] = useState(false)
+  const [isIos, setIsIos] = useState(false)
+  const [iosHint, setIosHint] = useState(false)
+
+  useEffect(() => {
+    const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator.standalone === true
+    setIsStandalone(!!standalone)
+    setIsIos(/iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream)
+    const onBeforeInstall = e => { e.preventDefault(); setInstallPrompt(e) }
+    window.addEventListener('beforeinstallprompt', onBeforeInstall)
+    const onInstalled = () => { setInstallPrompt(null); setIsStandalone(true) }
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
+
+  async function handleInstallClick() {
+    if (installPrompt) {
+      installPrompt.prompt()
+      const { outcome } = await installPrompt.userChoice
+      if (outcome === 'accepted') setIsStandalone(true)
+      setInstallPrompt(null)
+    } else if (isIos) {
+      setIosHint(v => !v)
+    }
+  }
 
   useEffect(() => {
     if (!openPlayer) return
@@ -131,7 +160,18 @@ export default function App() {
             <button key={id} className={tab === id ? 'on' : ''} onClick={() => { setOpenPlayer(null); setTab(id) }}>{label}</button>
           ))}
         </nav>
-        <div className="head-actions">
+        <div className="head-actions" style={{ position: 'relative' }}>
+          {!isStandalone && (installPrompt || isIos) && (
+            <button className="iconbtn" onClick={handleInstallClick} aria-label="Add to home screen" title="Add to home screen">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 19h14" /></svg>
+            </button>
+          )}
+          {iosHint && (
+            <div className="notice" style={{ position: 'absolute', top: 40, right: 0, width: 220, zIndex: 20, fontSize: 12.5 }}>
+              Tap the Share icon <b>⬆</b> in Safari's toolbar, then <b>"Add to Home Screen."</b>
+              <button className="btn sm ghost" style={{ marginTop: 8, width: '100%' }} onClick={() => setIosHint(false)}>Got it</button>
+            </div>
+          )}
           <button className="iconbtn" onClick={toggleTheme} aria-label="Toggle theme">{theme === 'dark' ? '☀' : '☾'}</button>
           <button className="iconbtn" onClick={() => setAbout(true)} aria-label="About">i</button>
           <button className="iconbtn avatar" onClick={() => { const mine = players.find(p => p.id === profile?.player_id); mine ? setOpenPlayer(mine) : setMenu(true) }} aria-label="Profile">
