@@ -128,7 +128,7 @@ function Room({ room, setRoom, heroes, user, onExit }) {
   }, [])
 
   useEffect(() => {
-    supabase.from('players').select('id, name').order('name')
+    supabase.from('players').select('id, name, role_pos, role_pos2, can_offlane').order('name')
       .then(({ data }) => setRoster(data || []))
   }, [])
   const [chat, setChat] = useState([])
